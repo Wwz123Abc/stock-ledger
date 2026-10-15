@@ -18,6 +18,7 @@
 ## 功能
 
 - **记一笔：** 股票买卖、美国国债、定期存款都在一个弹窗里录入；代码支持中文名、英文名搜索。
+- **批量导入：** 上传券商 App 的成交截图自动识别（需要开通，见下文），或者粘贴 Excel / CSV 表格，或者导入“账号”页导出的文件。识别结果先列成可修改的表格，标出可能重复的记录，确认后才保存。
 - **持仓：** 移动平均成本、现价（可手动改）、当日涨跌、市值、浮动盈亏、已实现盈亏；港股按港元记，汇总时折成美元。
 - **国债和定期存款：**
   - 国债按持有到期计算：票息按天累计，买入价和面值的差额平摊到到期日，扣掉买入时付的应计利息；
@@ -86,6 +87,15 @@ sudo -u stockledger python3 /opt/stock-ledger/app.py registration off
 
 在中国内地的服务器上用域名对外提供网站，需要先完成 ICP 备案。开放注册给别人用，意味着你在替他们保管财务记录，要对数据安全负责（《个人信息保护法》）；`static/privacy.html` 是一份隐私说明模板，请按你的实际情况修改，并补上你的联系方式。
 
+### 开通截图识别（可选）
+
+截图识别用的是阿里云百炼的通义千问视觉模型（默认 `qwen-vl-max`），按量付费，每张截图一般几分钱，新账号有免费额度。
+
+1. 在阿里云百炼控制台开通服务，创建一个 API Key（以 `sk-` 开头）。
+2. 在服务器上运行 `sudo -u stockledger python3 /opt/stock-ledger/app.py vision-key`，粘贴 Key。不用重启。
+
+每个账号每天最多识别 20 张，全站每天最多 300 张，识别失败的不计数，可以在 `app.py` 开头修改。截图会发送给阿里云，隐私说明里已经写明。没有开通时，导入窗口里的截图识别按钮不可用，粘贴表格和导入文件照常可用。
+
 ### Docker（实验性）
 
 ```bash
@@ -102,6 +112,7 @@ docker compose exec ledger python app.py users
 | 查看所有账号 | `python3 app.py users` |
 | 有人忘记密码 | `python3 app.py reset-password 用户名`，把打印出的重置码（24 小时有效）告诉对方；对方在登录页点“忘记密码？”，输入用户名、重置码和新密码 |
 | 删除账号 | `python3 app.py delete-user 用户名`（账号和全部记录一起删除） |
+| 开通截图识别 | `python3 app.py vision-key`，按提示粘贴阿里云百炼的 API Key（输入时不显示）；`vision-key off` 关闭 |
 | 开放或关闭注册 | `python3 app.py registration on` 或 `off` |
 | 手动备份 | `python3 app.py backup`（存到 `data/backups/`） |
 | 命令行取行情 | `python3 app.py refresh 用户名` |
@@ -125,7 +136,7 @@ docker compose exec ledger python app.py users
 - `app.py`：
   - 后端只有这一个文件：Python 标准库的 HTTP 服务器加 SQLite；
   - 负责账号（PBKDF2 密码哈希、HttpOnly Cookie、错误 5 次锁定 15 分钟、同一 IP 每小时最多注册 3 个）和数据的增删改查（`/api/c/<集合>`、`/api/d/<集合>/<id>`）；
-  - 也负责取行情（`/api/refresh`，每个账号 30 秒内只能刷新一次）。
+  - 也负责取行情（`/api/refresh`，每个账号 30 秒内只能刷新一次）、批量导入（`/api/import`）和截图识别（`/api/recognize`）。
   - 每个账号最多 5000 条记录，全站最多 2000 个账号，可以在 `app.py` 开头修改。
 - `static/`：前端页面，纯 HTML、CSS 和 JavaScript，不需要构建。
   - `index.html` 是账本首页；

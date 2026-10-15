@@ -64,11 +64,25 @@ button.navlink { font: inherit; font-size: 13px; font-weight: 500; cursor: point
 button.navlink:disabled { opacity: .6; cursor: default; }
 .navlink.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 /* Entry dialog */
-#entry { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .25); }
-#entry[open] { display: grid; gap: 14px; }
-#entry::backdrop { background: rgba(15, 20, 30, .45); }
+#entry, #importDlg { width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .25); }
+#entry[open], #importDlg[open] { display: grid; gap: 14px; align-content: start; }
+#entry > *, #importDlg > * { min-width: 0; }
+#entry::backdrop, #importDlg::backdrop { background: rgba(15, 20, 30, .45); }
 .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dlg-x { font: inherit; font-size: 16px; line-height: 1; width: 36px; height: 36px; flex: none; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
+.linkbtn { font: inherit; font-size: 13px; background: none; border: 0; padding: 0 0 10px; color: var(--accent); cursor: pointer; text-decoration: underline; display: block; }
+.imp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.imp-row input[type="file"] { font-size: 13px; max-width: 100%; }
+#impText { width: 100%; font: 13px/1.5 var(--f-num); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical; }
+#impTable { min-width: 820px; font-size: 13px; }
+#impTable th, #impTable td { padding: 6px 6px; }
+#impTable input:not([type="checkbox"]), #impTable select { width: 100%; padding: 4px 6px; font-size: 13px; }
+#impTable .imp-date { min-width: 128px; }
+#impTable .imp-flag { white-space: normal; min-width: 72px; color: var(--warn); font-size: 12px; }
+#impTable tr.dup td { background: var(--accent-soft); }
+#impMsg[data-kind="ok"], #impSaveMsg[data-kind="ok"] { color: var(--accent); }
+#impMsg[data-kind="err"], #impSaveMsg[data-kind="err"] { color: var(--warn); }
+.title .mini { margin-left: 4px; }
 .dlg-x:hover { color: var(--ink); border-color: var(--muted); }
 /* "?" help: a small round button beside a heading; its text opens as a card below the heading */
 .title { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -298,7 +312,8 @@ footer p { margin: 0 0 6px; }
   form { padding: 14px; }
   .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .nav-x { display: none; }
-  #entry { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 14px; }
+  #entry, #importDlg { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 14px; }
+  #impText { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -384,6 +399,7 @@ footer p { margin: 0 0 6px; }
       <button class="dlg-x" type="button" id="entryClose" aria-label="关闭">✕</button>
     </div>
     <div>
+      <button class="linkbtn" type="button" id="impOpen2">从截图、表格或文件批量导入交易 →</button>
       <div class="seg" role="radiogroup" aria-label="记录类型">
         <input type="radio" name="ekind" id="ek-stk" value="stk" checked><label for="ek-stk">股票</label>
         <input type="radio" name="ekind" id="ek-bond" value="bond"><label for="ek-bond">国债</label>
@@ -466,9 +482,45 @@ footer p { margin: 0 0 6px; }
     </form>
   </dialog>
 
+  <dialog id="importDlg" aria-labelledby="imp-h">
+    <div class="dlg-head">
+      <h2 id="imp-h">导入交易</h2>
+      <button class="dlg-x" type="button" id="impClose" aria-label="关闭">✕</button>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="导入方式">
+      <input type="radio" name="imode" id="im-shot" value="shot" checked><label for="im-shot">交易截图</label>
+      <input type="radio" name="imode" id="im-paste" value="paste"><label for="im-paste">粘贴表格</label>
+      <input type="radio" name="imode" id="im-file" value="file"><label for="im-file">导入文件</label>
+    </div>
+    <div class="imp-pane" data-pane="shot">
+      <p class="hint">选择券商或银行 App 的成交截图，可以一次选几张（最多 5 张）。截图会发给阿里云的通义千问识别，<b>请先裁掉账户号码、姓名等个人信息</b>。识别结果列在下面，核对无误再导入。<span id="impLeft"></span></p>
+      <div class="imp-row"><input type="file" id="impImg" accept="image/*" multiple><button class="btn" type="button" id="impShotGo">开始识别</button></div>
+    </div>
+    <div class="imp-pane" data-pane="paste" hidden>
+      <p class="hint">从 Excel 或券商导出的交易明细里复制几行，粘贴到下面。第一行最好是表头（日期、方向、代码、股数、价格、费用、备注），没有表头就按这个顺序读。</p>
+      <textarea id="impText" rows="6" spellcheck="false" placeholder="日期	方向	代码	股数	价格	费用	备注&#10;2026-10-13	买入	VOO	2	715.00	0	"></textarea>
+      <div class="imp-row"><button class="btn" type="button" id="impPasteGo">读取</button></div>
+    </div>
+    <div class="imp-pane" data-pane="file" hidden>
+      <p class="hint">选择在“账号”页导出的 JSON 文件（含交易、国债和定期存款），或者一个 CSV 文件。</p>
+      <div class="imp-row"><input type="file" id="impFile" accept=".json,.csv,.txt,application/json,text/csv"></div>
+    </div>
+    <p class="hint" id="impMsg" role="status"></p>
+    <div id="impReview" hidden>
+      <div class="table-wrap">
+        <table id="impTable">
+          <thead><tr><th><input type="checkbox" id="impAll" aria-label="全选"></th><th>日期</th><th>方向</th><th>代码</th><th class="num">股数</th><th class="num">价格</th><th class="num">费用</th><th>备注</th><th>检查</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <label class="hint" id="impFixed" hidden></label>
+      <div class="form-foot"><button class="btn" type="button" id="impSave">导入勾选的记录</button><p class="hint" id="impSaveMsg" role="status"></p></div>
+    </div>
+  </dialog>
+
   <section aria-labelledby="log-h">
     <div class="head-row">
-      <h2 id="log-h">交易记录</h2>
+      <div class="title"><h2 id="log-h">交易记录</h2><button class="mini" type="button" id="impOpen">导入</button></div>
       <p class="hint" id="logSum"></p>
     </div>
     <div class="logbar">
@@ -946,6 +998,8 @@ TAL|好未来|TAL Education
     $("#mixSum").textContent = unpriced ? "有股票还没有价格，暂不计入；先在持仓表里填现价。" : items.length ? "共 " + items.length + " 项" : "";
     $("#mixTotal").textContent = total > 0 ? money(total) : "—";
     if (!items.length || !(total > 0)) {
+      // An empty grey ring keeps the chart's shape, so the centre label stays in place.
+      box.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 300 300" aria-hidden="true"><circle cx="150" cy="150" r="91" fill="none" stroke="var(--line)" stroke-width="42"/></svg>');
       $("#mix tbody").innerHTML = '<tr><td colspan="4" class="empty">' + (state.ready ? "还没有持仓。" : "正在读取…") + "</td></tr>";
       $("#mix tfoot").innerHTML = "";
       return;
@@ -1731,7 +1785,7 @@ TAL|好未来|TAL Education
   });
 
   function readOnly(msg, kind) {
-    $("#entryBtn").hidden = true;
+    $("#entryBtn").hidden = $("#impOpen").hidden = true;
     setStatus(msg, kind);
     render();
   }
@@ -1743,6 +1797,203 @@ TAL|好未来|TAL Education
   entryDlg.addEventListener("click", (e) => {
     const r = entryDlg.getBoundingClientRect();
     if (e.target === entryDlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) entryDlg.close();
+  });
+
+  // ---------- import: screenshots, pasted tables, files ----------
+  const impDlg = $("#importDlg");
+  let impFixedList = [];
+  const impSay = (sel, text, kind) => { const el = $(sel); el.textContent = text; el.dataset.kind = kind || ""; };
+  async function openImport() {
+    if (entryDlg.open) entryDlg.close();
+    impDlg.showModal();
+    try {
+      const r = await window.ledgerApi("GET", "/api/recognize");
+      $("#impLeft").textContent = r.enabled ? "今天还能识别 " + r.left + " 张。" : "（管理员还没有开通截图识别，可以先用粘贴表格。）";
+      $("#impShotGo").disabled = !r.enabled;
+    } catch (e) { /* the buttons still report errors */ }
+  }
+  $("#impOpen").addEventListener("click", openImport);
+  $("#impOpen2").addEventListener("click", openImport);
+  $("#impClose").addEventListener("click", () => impDlg.close());
+  impDlg.addEventListener("click", (e) => {
+    const r = impDlg.getBoundingClientRect();
+    if (e.target === impDlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) impDlg.close();
+  });
+  document.querySelectorAll('input[name="imode"]').forEach((r) => r.addEventListener("change", () => {
+    document.querySelectorAll(".imp-pane").forEach((p) => { p.hidden = p.dataset.pane !== r.value; });
+  }));
+
+  // Loose readers for dates, buy/sell and numbers as brokers and spreadsheets write them.
+  function impDate(v) {
+    const s = String(v == null ? "" : v).trim();
+    let m = s.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+    if (m) return m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);  // US order: month/day/year
+    if (m) return m[3] + "-" + m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0");
+    m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+    return m ? m[1] + "-" + m[2] + "-" + m[3] : "";
+  }
+  const impSide = (v) => { const s = String(v == null ? "" : v).trim().toLowerCase(); return /卖|sell|^s$/.test(s) ? "sell" : /买|buy|^b$/.test(s) ? "buy" : ""; };
+  const impNum = (v) => (v == null || String(v).trim() === "" ? NaN : parseFloat(String(v).replace(/HKD|USD|HK\$|US\$|股/gi, "").replace(/[,\s，$¥]/g, "")));
+  const impKey = (t) => [t.date, t.side, t.symbol, Number(t.shares), r2(t.price)].join("|");
+  function impCheck(t) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t.date)) return "日期不对";
+    if (t.side !== "buy" && t.side !== "sell") return "选买入或卖出";
+    if (!t.symbol) return "代码认不出";
+    if (!(t.shares > 0)) return "股数不对";
+    if (!(t.price > 0)) return "价格不对";
+    if (!(t.fees >= 0)) return "费用不对";
+    return "";
+  }
+
+  // Pasted rows or CSV: tab, comma or full-width comma separated; columns found by header names.
+  function parseTable(text) {
+    const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+    const d = lines[0].includes("\t") ? "\t" : lines[0].includes(",") ? "," : lines[0].includes("，") ? "，" : null;
+    const split = (l) => {
+      if (!d) return l.split(/\s+/);
+      const out = []; let cur = "", q = false;
+      for (const ch of l) { if (ch === '"') q = !q; else if (ch === d && !q) { out.push(cur); cur = ""; } else cur += ch; }
+      out.push(cur);
+      return out.map((c) => c.trim());
+    };
+    const COLS = { date: /日期|时间|date|time/i, side: /方向|买卖|类型|操作|side|action|type/i, symbol: /代码|股票|证券|名称|symbol|ticker|code|stock/i,
+      shares: /股数|数量|成交量|shares|qty|quantity/i, price: /价格|成交价|单价|均价|price/i, fees: /费|佣金|税|fee|commission/i, note: /备注|编号|说明|note|memo|order/i };
+    let map = {};
+    split(lines[0]).forEach((cell, j) => { for (const k in COLS) if (map[k] == null && COLS[k].test(cell)) { map[k] = j; break; } });
+    const head = map.date != null && map.symbol != null;
+    if (!head) map = { date: 0, side: 1, symbol: 2, shares: 3, price: 4, fees: 5, note: 6 };
+    return (head ? lines.slice(1) : lines).map((l) => { const c = split(l), o = {}; for (const k in map) o[k] = c[map[k]]; return o; });
+  }
+
+  // The review table: one editable row per trade; duplicates of saved trades (or of each other) start unticked.
+  function impShow(rows, fixed) {
+    const have = new Set(state.trades.map(impKey)), seen = new Set();
+    const list = rows.map((r) => {
+      const raw = String(r.symbol == null ? "" : r.symbol).trim();
+      const t = { date: impDate(r.date), side: impSide(r.side), symbol: resolveSym(raw), raw, shares: impNum(r.shares), price: impNum(r.price),
+        fees: r.fees == null || String(r.fees).trim() === "" ? 0 : impNum(r.fees), note: String(r.note == null ? "" : r.note).slice(0, 120) };
+      const k = impKey(t);
+      t.dup = have.has(k) || seen.has(k);
+      seen.add(k);
+      return t;
+    });
+    const sameFixed = (a, b) => a.name === b.name && a.maturity === b.maturity && fixedStart(a) === fixedStart(b);
+    impFixedList = fixed.filter((f) => !state.fixed.some((x) => sameFixed(x, f)));
+    const skipped = fixed.length - impFixedList.length;
+    const opt = (v, label, cur) => '<option value="' + v + '"' + (cur === v ? " selected" : "") + ">" + label + "</option>";
+    const num = (n) => (Number.isFinite(n) ? String(n) : "");
+    $("#impTable tbody").innerHTML = list.length ? list.map((t) => {
+      const flag = t.dup ? "可能重复" : impCheck(t);
+      return '<tr' + (t.dup ? ' class="dup"' : "") + '><td><input type="checkbox" class="imp-on"' + (flag ? "" : " checked") + ' aria-label="导入这一笔"></td>' +
+        '<td><input type="date" class="imp-date" value="' + esc(t.date) + '"></td>' +
+        '<td><select class="imp-side">' + (t.side ? "" : opt("", "？", "")) + opt("buy", "买入", t.side) + opt("sell", "卖出", t.side) + "</select></td>" +
+        '<td><input class="imp-sym" value="' + esc(t.symbol || t.raw) + '" autocapitalize="characters" spellcheck="false"></td>' +
+        '<td><input class="imp-qty num" inputmode="decimal" value="' + num(t.shares) + '"></td>' +
+        '<td><input class="imp-px num" inputmode="decimal" value="' + num(t.price) + '"></td>' +
+        '<td><input class="imp-fee num" inputmode="decimal" value="' + num(t.fees) + '"></td>' +
+        '<td><input class="imp-note" maxlength="120" value="' + esc(t.note) + '"></td>' +
+        '<td class="imp-flag">' + flag + "</td></tr>";
+    }).join("") : '<tr><td colspan="9" class="empty">没有交易记录。</td></tr>';
+    $("#impAll").checked = list.length > 0 && list.every((t) => !t.dup && !impCheck(t));
+    const fx = $("#impFixed");
+    fx.hidden = !fixed.length;
+    fx.innerHTML = impFixedList.length
+      ? '<input type="checkbox" id="impFixedOn" checked> 同时导入 ' + impFixedList.length + " 条国债或定期存款" + (skipped ? "（另有 " + skipped + " 条已经有了，跳过）" : "")
+      : fixed.length ? "文件里的 " + fixed.length + " 条国债或定期存款都已经有了，跳过。" : "";
+    impSay("#impSaveMsg", "", "");
+    $("#impReview").hidden = false;
+  }
+  $("#impAll").addEventListener("change", (e) => document.querySelectorAll("#impTable .imp-on").forEach((c) => { c.checked = e.target.checked; }));
+
+  // Screenshots: shrunk in the browser (long side 2400 px, JPEG), then read one by one on the server.
+  async function shrink(file) {
+    const img = await createImageBitmap(file);
+    const k = Math.min(1, 2400 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.85);
+  }
+  $("#impShotGo").addEventListener("click", async () => {
+    const files = [...$("#impImg").files].slice(0, 5), btn = $("#impShotGo");
+    if (!files.length) { impSay("#impMsg", "先选择截图。", "err"); return; }
+    btn.disabled = true;
+    const rows = [], errs = [];
+    for (let i = 0; i < files.length; i++) {
+      impSay("#impMsg", "正在识别第 " + (i + 1) + " / " + files.length + " 张，每张大约 10–30 秒…", "");
+      try {
+        const r = await window.ledgerApi("POST", "/api/recognize", { image: await shrink(files[i]) });
+        rows.push(...(r.trades || []));
+        $("#impLeft").textContent = "今天还能识别 " + r.left + " 张。";
+      } catch (e) {
+        errs.push((files.length > 1 ? "第 " + (i + 1) + " 张：" : "") + (e.message || "识别没成功"));
+        if (e.code === "resource_exhausted") break;
+      }
+    }
+    btn.disabled = false;
+    if (rows.length) impShow(rows, []);
+    impSay("#impMsg", rows.length ? "识别出 " + rows.length + " 笔，请逐行核对日期、代码、股数和价格，改好后再导入。" + (errs.length ? errs.join("；") : "")
+      : errs.join("；") || "截图里没有找到成交记录。", rows.length ? "ok" : "err");
+  });
+  $("#impPasteGo").addEventListener("click", () => {
+    const rows = parseTable($("#impText").value);
+    if (!rows.length) { impSay("#impMsg", "先粘贴要导入的几行。", "err"); return; }
+    impShow(rows, []);
+    impSay("#impMsg", "读到 " + rows.length + " 行，请核对后导入。", "ok");
+  });
+  $("#impFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const text = await f.text();
+    if (/\.json$/i.test(f.name) || text.trim().startsWith("{")) {
+      try {
+        const j = JSON.parse(text), tr = Object.values(j.trades || {});
+        const fx = Object.values(j.fixed || {}).filter((x) => x && (x.kind === "bond" || x.kind === "deposit"));
+        if (!tr.length && !fx.length) throw new Error("empty");
+        impShow(tr, fx);
+        impSay("#impMsg", "文件里有 " + tr.length + " 笔交易" + (fx.length ? "、" + fx.length + " 条国债或定期存款" : "") + "，请核对后导入。", "ok");
+      } catch (err) { impSay("#impMsg", "读不懂这个文件，请选择在“账号”页导出的 JSON 文件。", "err"); }
+    } else {
+      const rows = parseTable(text);
+      if (rows.length) impShow(rows, []);
+      impSay("#impMsg", rows.length ? "读到 " + rows.length + " 行，请核对后导入。" : "文件里没有读到交易。", rows.length ? "ok" : "err");
+    }
+    e.target.value = "";
+  });
+
+  $("#impSave").addEventListener("click", async () => {
+    const trades = [];
+    let bad = 0;
+    document.querySelectorAll("#impTable tbody tr").forEach((tr) => {
+      const on = tr.querySelector(".imp-on");
+      if (!on || !on.checked) return;
+      const v = (c) => tr.querySelector(c).value;
+      const sym = resolveSym(v(".imp-sym"));
+      const t = { date: v(".imp-date"), side: v(".imp-side"), symbol: sym, shares: impNum(v(".imp-qty")), price: impNum(v(".imp-px")),
+        fees: v(".imp-fee").trim() === "" ? 0 : impNum(v(".imp-fee")), note: v(".imp-note").trim().slice(0, 120) };
+      const err = impCheck(t);
+      tr.querySelector(".imp-flag").textContent = err;
+      if (err) bad++; else { tr.querySelector(".imp-sym").value = sym; trades.push(t); }
+    });
+    const fixed = $("#impFixedOn") && $("#impFixedOn").checked ? impFixedList : [];
+    if (bad) { impSay("#impSaveMsg", "有 " + bad + " 行要先改好（看最后一列），或者取消勾选。", "err"); return; }
+    if (!trades.length && !fixed.length) { impSay("#impSaveMsg", "没有勾选要导入的记录。", "err"); return; }
+    const btn = $("#impSave");
+    btn.disabled = true;
+    try {
+      const r = await window.ledgerApi("POST", "/api/import", { trades, fixed });
+      const [t, hi, c, fx] = await Promise.all([db.collection("trades").get(), db.collection("history").get(), db.doc("config/main").get(), db.collection("fixed").get()]);
+      applyTrades(t); applyHistory(hi); applyConfig(c); applyFixed(fx);
+      $("#impReview").hidden = true;
+      $("#impText").value = ""; $("#impImg").value = "";
+      impSay("#impMsg", "已导入 " + r.trades + " 笔交易" + (r.fixed ? "、" + r.fixed + " 条国债或定期存款" : "") + "。新股票点“刷新数据”后会有价格。", "ok");
+    } catch (err) {
+      impSay("#impSaveMsg", err.code === "invalid_argument" || err.code === "quota_exceeded" ? err.message : errText(err), "err");
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // "?" help cards: one open at a time; a click elsewhere or Escape closes it.
@@ -1767,7 +2018,7 @@ TAL|好未来|TAL Education
     if (u) { try { state.canWrite = await u.canEdit(); } catch (e) { state.canWrite = null; } }
     if (!d) { readOnly("连不上服务器，刷新页面试试。", "err"); return; }
     db = d;
-    if (state.canWrite === false) $("#entryBtn").hidden = true;
+    if (state.canWrite === false) $("#entryBtn").hidden = $("#impOpen").hidden = true;
 
     db.collection("trades").onSnapshot(applyTrades, (err) => setStatus("读取交易记录出错（" + (err && err.code) + "），刷新页面试试。", "err"));
     db.collection("history").onSnapshot(applyHistory, () => { state.histReady = true; render(); });

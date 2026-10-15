@@ -410,7 +410,7 @@ dash.calc("weights", {
   let drag = null, pinch = null;
   const toX = (clientX) => { const r = kbox.getBoundingClientRect(); return ((clientX - r.left) * lay.W) / r.width; };
   const idxAt = (clientX) => Math.max(0, Math.min(lay.vis.length - 1, Math.round((toX(clientX) - lay.cx0) / lay.step)));
-  const minBars = () => Math.min(10, lay.all.length);
+  const minBars = () => Math.min(20, lay.all.length);
   function setWindow(count, end) {
     const n = lay.all.length;
     count = Math.max(minBars(), Math.min(n, Math.round(count)));
@@ -613,14 +613,16 @@ dash.calc("weights", {
     const ma = (n) => all.map((b, i) => (i + 1 >= n ? d3.mean(all.slice(i + 1 - n, i + 1), (d) => d.close) : null));
     const mas = [ma(5), ma(20), ma(60)];
     const want = st.since && st.first ? all.filter((b) => b.date >= st.first).length : st.count;
-    const count = Math.max(Math.min(10, all.length), Math.min(all.length, want));
+    const count = Math.max(Math.min(20, all.length), Math.min(all.length, want));
     const endIdx = st.since || st.end == null ? all.length - 1 : Math.max(count - 1, Math.min(all.length - 1, st.end));
     const start = endIdx - count + 1;
     const vis = all.slice(start, endIdx + 1);
 
+    // The price range follows the candles; an average cost far outside it is pinned to the edge instead of
+    // stretching the chart and squashing the candles.
     let lo = d3.min(vis, (d) => d.low), hi = d3.max(vis, (d) => d.high);
     const cost = h.shares > 0 && h.avg_cost ? h.avg_cost : null;
-    if (cost) { lo = Math.min(lo, cost); hi = Math.max(hi, cost); }
+    if (cost && cost >= lo - (hi - lo) * 0.25 && cost <= hi + (hi - lo) * 0.25) { lo = Math.min(lo, cost); hi = Math.max(hi, cost); }
     mas.forEach((arr) => arr.slice(start).forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }));
     const pad = (hi - lo) * 0.1 || hi * 0.02;
     const y = d3.scaleLinear([lo - pad, hi + pad], [PH, 0]).nice();
@@ -635,6 +637,7 @@ dash.calc("weights", {
     const L = 2, R = W - RW;
     const x = d3.scaleBand(vis.map((d) => d.date), [L, R]).paddingInner(0.3).paddingOuter(0.2);
     const bw = Math.max(1, x.bandwidth());
+    const cw = Math.min(bw, narrow ? 9 : 13);  // candle width: thin enough to look like candles when zoomed in
     const cx = (d) => x(d.date) + bw / 2;
     const col = (d) => (d.close >= d.open ? "var(--color-ok)" : "var(--color-bad)");
 
@@ -648,7 +651,7 @@ dash.calc("weights", {
     // Volume.
     const vy = d3.scaleLinear([0, d3.max(vis, (d) => d.volume) || 1], [PH + GAP + VH, PH + GAP]);
     g.append("g").selectAll("rect").data(vis).join("rect")
-      .attr("x", (d) => x(d.date)).attr("width", bw).attr("y", (d) => vy(d.volume)).attr("height", (d) => vy(0) - vy(d.volume))
+      .attr("x", (d) => cx(d) - cw / 2).attr("width", cw).attr("y", (d) => vy(d.volume)).attr("height", (d) => vy(0) - vy(d.volume))
       .style("fill", col).style("opacity", 0.4);
     g.append("text").attr("class", "kx-tick").attr("x", R + 8).attr("y", PH + GAP + 9).text("成交量");
 
@@ -657,7 +660,7 @@ dash.calc("weights", {
     cg.selectAll("line").data(vis).join("line")
       .attr("x1", cx).attr("x2", cx).attr("y1", (d) => y(d.high)).attr("y2", (d) => y(d.low)).style("stroke", col).style("stroke-width", 1);
     cg.selectAll("rect").data(vis).join("rect")
-      .attr("x", (d) => x(d.date)).attr("width", bw)
+      .attr("x", (d) => cx(d) - cw / 2).attr("width", cw)
       .attr("y", (d) => y(Math.max(d.open, d.close))).attr("height", (d) => Math.max(1, Math.abs(y(d.open) - y(d.close))))
       .style("fill", col);
 
@@ -671,7 +674,12 @@ dash.calc("weights", {
     });
 
     // Average cost.
-    if (cost) {
+    const [dLo, dHi] = y.domain();
+    if (cost && (cost < dLo || cost > dHi)) {
+      const below = cost < dLo;
+      g.append("text").attr("class", "kx-cost").attr("x", L + 4).attr("y", below ? PH - 6 : 12)
+        .text("成本 " + money(cost, h.currency) + (below ? " ↓ 在图下方" : " ↑ 在图上方"));
+    } else if (cost) {
       const yy = y(cost);
       g.append("line").attr("x1", L).attr("x2", R).attr("y1", yy).attr("y2", yy)
         .style("stroke", "var(--cds-chart-reference)").style("stroke-dasharray", "5 4").style("stroke-width", 1.5);

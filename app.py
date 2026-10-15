@@ -15,6 +15,8 @@ notes belong to one account and only it can read them.
   python3 app.py import NAME seed.json       # load {collection: {doc_id: data}} into an account
   python3 app.py refresh NAME                # fetch market data for one account's holdings
   python3 app.py backup                      # copy the database to data/backups/, keep 30
+  python3 app.py vision-key                  # turn on screenshot import: asks for a DashScope API key
+  python3 app.py vision-key off              # turn it off and forget the key
 """
 import datetime as dt
 import hashlib
@@ -29,6 +31,7 @@ import sqlite3
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +50,8 @@ NAME_RE = re.compile(r"^[A-Za-z0-9_一-鿿]{2,20}$")
 SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
 SESSION_DAYS = 30
 MAX_BODY = 256 * 1024
+MAX_IMAGE_BODY = 6 * 1024 * 1024
+MAX_IMPORT = 1000        # records in one import
 MAX_USERS = 2000
 MAX_DOCS = 5000          # records per account
 REFRESH_GAP = 30         # seconds between two refreshes of one account
@@ -57,6 +62,20 @@ refresh_lock = threading.Lock()
 fails = {}         # ip -> [count, first_time]: wrong passwords and reset codes
 signups = {}       # ip -> [count, first_time]
 last_refresh = {}  # uid -> time
+VISION_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+VISION_MODEL = "qwen-vl-max"
+VISION_PER_DAY = 20      # screenshots per account per day
+VISION_SITE_DAY = 300    # screenshots for the whole site per day
+vision_used = {}         # (date, uid) -> count; (date, 0) is the whole site
+VISION_PROMPT = (
+    "你是交易记录提取器。从券商或银行 App 的成交截图中提取股票成交记录，只输出一个 JSON 数组，不要任何解释或 Markdown。"
+    "每条记录的格式：{\"date\": \"成交日期 YYYY-MM-DD\", \"side\": \"buy 或 sell\", "
+    "\"symbol\": \"股票代码，美股如 AAPL、BRK.B，港股用 4 位数字如 0700；看不到代码就填股票名称\", "
+    "\"shares\": 成交数量, \"price\": 成交单价, \"fees\": 佣金、平台费、印花税等费用合计（看不到就填 null）, "
+    "\"currency\": \"USD 或 HKD\", \"note\": \"成交单编号或指示编号，没有就填空字符串\"}。"
+    "规则：只提取已经成交的记录，忽略未成交、已撤销的委托；不要输出账户号码、证券账号、银行卡号、姓名等个人信息；"
+    "数字不要带千分位和货币符号；截图里没有成交记录就输出 []。"
+)
 
 
 # ---------------------------------------------------------------- storage
@@ -428,6 +447,57 @@ def refresh_market(uid):
     return report
 
 
+# ---------------------------------------------------------------- import and screenshot recognition
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def clean_trade(t):
+    """A trade from an import, checked and reduced to the fields the ledger uses; None when it is not usable."""
+    if not isinstance(t, dict):
+        return None
+    sym = str(t.get("symbol", "")).strip().upper()
+    try:
+        shares, price, fees = float(t.get("shares")), float(t.get("price")), float(t.get("fees") or 0)
+    except (TypeError, ValueError):
+        return None
+    if not (SYMBOL_RE.match(sym) and DATE_RE.match(str(t.get("date", ""))) and t.get("side") in ("buy", "sell")
+            and shares > 0 and price > 0 and fees >= 0):
+        return None
+    hk = sym.isdigit()
+    return {"date": t["date"], "side": t["side"], "symbol": sym, "market": "HK" if hk else "US", "currency": "HKD" if hk else "USD",
+            "shares": shares, "price": price, "fees": fees, "note": str(t.get("note") or "")[:120], "createdAt": now_iso()}
+
+
+def import_records(uid, trades, fixed):
+    rows = [("trades", t) for t in trades] + [("fixed", f) for f in fixed]
+    with write_lock, db() as con:
+        for coll, data in rows:
+            id_ = "i" + dt.datetime.now().strftime("%Y%m%d%H%M%S") + secrets.token_hex(4)
+            con.execute("INSERT INTO docs(uid,coll,id,data,updated) VALUES(?,?,?,?,?)", (uid, coll, id_, json.dumps(data, ensure_ascii=False), now_iso()))
+    bump(uid)
+
+
+def vision_key():
+    return get_meta("vision_key") or os.environ.get("DASHSCOPE_API_KEY", "")
+
+
+def recognize(image_url):
+    """Trades read from one screenshot by the vision model, as a list of dicts (not yet checked)."""
+    body = {"model": get_meta("vision_model") or VISION_MODEL, "temperature": 0, "messages": [
+        {"role": "system", "content": VISION_PROMPT},
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}, {"type": "text", "text": "提取这张截图里的成交记录。"}]},
+    ]}
+    req = urllib.request.Request(VISION_URL, data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + vision_key()})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        text = json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"]
+    if isinstance(text, list):
+        text = "".join(str(x.get("text", "")) for x in text if isinstance(x, dict))
+    a, b = text.find("["), text.rfind("]")
+    rows = json.loads(text[a:b + 1]) if a >= 0 and b > a else []
+    return [r for r in rows if isinstance(r, dict)][:200]
+
+
 # ---------------------------------------------------------------- http
 class Handler(BaseHTTPRequestHandler):
     server_version = "ledger"
@@ -473,9 +543,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def body(self):
+    def body(self, limit=MAX_BODY):
         n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_BODY:
+        if n > limit:
             raise ValueError("too large")
         raw = self.rfile.read(n) if n else b"{}"
         obj = json.loads(raw or b"{}")
@@ -595,6 +665,50 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(502, {"error": "取行情失败：%s" % e})
             finally:
                 refresh_lock.release()
+
+        if parts == ["import"] and method == "POST":
+            b = self.body()
+            trades, fixed = b.get("trades") or [], b.get("fixed") or []
+            if not isinstance(trades, list) or not isinstance(fixed, list) or len(trades) + len(fixed) > MAX_IMPORT:
+                return self.send_json(400, {"error": "一次最多导入 %d 条。" % MAX_IMPORT})
+            good = [clean_trade(t) for t in trades]
+            if None in good:
+                return self.send_json(400, {"error": "第 %d 笔交易的内容不完整或格式不对。" % (good.index(None) + 1)})
+            fx = [f for f in fixed if isinstance(f, dict) and f.get("kind") in ("bond", "deposit")]
+            if len(fx) != len(fixed):
+                return self.send_json(400, {"error": "国债或定存记录的格式不对。"})
+            if count_docs(uid) + len(good) + len(fx) > MAX_DOCS:
+                return self.send_json(507, {"error": "记录太多了，每个账号最多 %d 条。" % MAX_DOCS})
+            import_records(uid, good, fx)
+            return self.send_json(200, {"trades": len(good), "fixed": len(fx)})
+        if parts == ["recognize"] and method == "GET":
+            today = dt.date.today().isoformat()
+            return self.send_json(200, {"enabled": bool(vision_key()), "left": max(0, VISION_PER_DAY - vision_used.get((today, uid), 0))})
+        if parts == ["recognize"] and method == "POST":
+            if not vision_key():
+                return self.send_json(503, {"error": "管理员还没有开通截图识别，可以先用粘贴表格导入。"})
+            today = dt.date.today().isoformat()
+            if vision_used.get((today, uid), 0) >= VISION_PER_DAY:
+                return self.send_json(429, {"error": "今天的截图识别次数（%d 张）已用完，明天再来。" % VISION_PER_DAY})
+            if vision_used.get((today, 0), 0) >= VISION_SITE_DAY:
+                return self.send_json(429, {"error": "今天全站的截图识别次数已用完，明天再来。"})
+            image = str(self.body(MAX_IMAGE_BODY).get("image", ""))
+            if not re.match(r"^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$", image):
+                return self.send_json(400, {"error": "图片格式不对，请用 JPG 或 PNG 截图。"})
+            used = ((today, uid), (today, 0))
+            for k in used:
+                vision_used[k] = vision_used.get(k, 0) + 1
+            try:
+                rows = recognize(image)
+            except Exception as e:
+                for k in used:  # a failed read does not count against the daily allowance
+                    vision_used[k] -= 1
+                if isinstance(e, urllib.error.HTTPError):
+                    sys.stderr.write("vision: HTTP %s %s\n" % (e.code, e.read()[:300]))
+                    return self.send_json(502, {"error": "识别服务出错（%s），稍后再试。" % e.code})
+                sys.stderr.write("vision: %r\n" % e)
+                return self.send_json(502, {"error": "识别没成功，换一张清楚点的截图再试。"})
+            return self.send_json(200, {"trades": rows, "left": max(0, VISION_PER_DAY - vision_used[(today, uid)])})
 
         # ---- records
         if len(parts) >= 2 and parts[0] in ("c", "d") and parts[1] in SHARED_COLLS:
@@ -731,6 +845,18 @@ def main():
             print(coll, len(docs))
     elif cmd == "backup":
         backup()
+    elif cmd == "vision-key":
+        if sys.argv[2:3] == ["off"]:
+            with write_lock, db() as con:
+                con.execute("DELETE FROM meta WHERE k='vision_key'")
+            print("screenshot import off")
+        else:
+            import getpass
+            key = getpass.getpass("DashScope API key (input hidden): ").strip()
+            if not key.startswith("sk-"):
+                raise SystemExit("that does not look like a DashScope key (it starts with sk-)")
+            set_meta("vision_key", key)
+            print("screenshot import on, model %s; restart not needed" % (get_meta("vision_model") or VISION_MODEL))
     elif cmd == "refresh":
         print(json.dumps(refresh_market(account(arg(2, "refresh NAME"))["id"]), ensure_ascii=False, indent=1))
     else:
