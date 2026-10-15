@@ -109,6 +109,8 @@ button.navlink:disabled { opacity: .6; cursor: default; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 #holdings { min-width: 860px; }
 #log { min-width: 760px; }
+#monthly { min-width: 640px; }
+#monthly td:first-child small { display: block; font-size: 12px; color: var(--muted); }
 .logbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .logbar .seg label { padding: 5px 14px; font-size: 13px; }
 .logsym { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
@@ -242,6 +244,12 @@ footer p { margin: 0 0 6px; }
   .pnl-sub { text-align: left; }
   /* Trade log as cards: symbol and amount, then date, shares and price, then note and actions */
   #mix thead th:nth-child(2), #mix tbody td:nth-child(2) { display: none; }
+  /* Monthly summary on phones: month, P&L, return and running total */
+  #monthly { min-width: 0; }
+  #monthly th:nth-child(2), #monthly td:nth-child(2), #monthly th:nth-child(3), #monthly td:nth-child(3) { display: none; }
+  #monthly { font-size: 13px; }
+  #monthly th, #monthly td { padding: 9px 6px; }
+  #monthly td:first-child { white-space: normal; }
   #log { min-width: 0; }
   #log thead { display: none; }
   #log tbody tr:not(.mon) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "sym amt" "meta meta" "note acts"; gap: 4px 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
@@ -364,6 +372,20 @@ footer p { margin: 0 0 6px; }
       <div class="pnl-tip" id="pnlTip" hidden></div>
     </div>
     <dl class="pnl-stats" id="pnlStats" hidden></dl>
+  </section>
+
+  <section aria-labelledby="mon-h">
+    <div class="head-row">
+      <div class="title"><h2 id="mon-h">月度总结</h2><details class="help"><summary aria-label="月度总结怎么算">?</summary><div class="help-body"><p>当月盈亏 = 月末的累计收益 − 上个月末的累计收益，包括股票涨跌、卖出的已实现盈亏、国债和定存当月计入的利息，和收益走势用的是同一组数字。本月算到今天。</p><p>月收益率 = 当月盈亏 ÷ 当月平均投入成本（股票成本 + 国债买入成本 + 定存本金，按每个交易日平均）。</p><p>年化收益率按资金加权计算（XIRR）：把每一笔买入、卖出、存入、国债票息和到期都当作一笔现金进出，再加上今天的总市值，求出一个年利率。意思是：这些钱如果在同样的时间存进一个按这个年利率复利的账户，最后会得到同样多的钱。</p><p>投资不满一年时，年化数字会把短期的涨跌放大很多，只能参考；满一年以后才比较有意义。不满 30 天时不显示。</p></div></details></div>
+      <p class="hint" id="monSum"></p>
+    </div>
+    <dl class="pnl-stats" id="monStats" hidden></dl>
+    <div class="table-wrap">
+      <table id="monthly">
+        <thead><tr><th>月份</th><th class="num">股票</th><th class="num">国债和定存</th><th class="num">当月盈亏</th><th class="num">月收益率</th><th class="num">月末累计收益</th></tr></thead>
+        <tbody><tr><td colspan="6" class="empty">正在读取…</td></tr></tbody>
+      </table>
+    </div>
   </section>
 
   <section aria-labelledby="hold-h">
@@ -1237,6 +1259,87 @@ TAL|好未来|TAL Education
       return { date: d, live: isLive, value, cost, realized, total, day, pct: base > 0 ? total / base : null, bySym, trades, fixedValue, fixedCost, fixedIncome, byFixed };
     });
   }
+  // ---------- monthly summary ----------
+  // Every money movement as [date, USD]: buys and purchases out (negative), sells, coupons and maturities in, and
+  // what everything is worth on the last day. Their plain sum is the total profit; XIRR finds the annual rate.
+  function cashFlows(list, end, endValue) {
+    const cf = [];
+    for (const t of list) {
+      if (t.date > end) continue;
+      const ccy = tradeCcy(t), q = Number(t.shares) || 0, p = Number(t.price) || 0, f = Number(t.fees) || 0;
+      cf.push([t.date, t.side === "buy" ? -toUSD(q * p + f, ccy) : toUSD(q * p - f, ccy)]);
+    }
+    for (const f of state.fixed) {
+      const c = f.currency || "USD", start = fixedStart(f);
+      if (start > end) continue;
+      if (f.kind === "bond") {
+        cf.push([start, -toUSD((f.face * f.price) / 100 + (f.accruedPaid || 0), c)]);
+        const cpn = (f.face * f.coupon) / 100 / (f.freq || 2);
+        for (const d of coupons(f).slice(1)) if (d <= end) cf.push([d, toUSD(cpn + (d === f.maturity ? f.face : 0), c)]);
+      } else {
+        cf.push([start, -toUSD(f.principal, c)]);
+        if (f.maturity <= end) cf.push([f.maturity, toUSD(f.principal + f.interest, c)]);
+      }
+    }
+    cf.push([end, endValue]);
+    return cf;
+  }
+  function xirr(cf) {
+    const t0 = cf.reduce((m, c) => (c[0] < m ? c[0] : m), cf[0][0]);
+    const ys = cf.map(([d, v]) => [dayDiff(t0, d) / 365, v]);
+    const npv = (r) => ys.reduce((s, [y, v]) => s + v / Math.pow(1 + r, y), 0);
+    let lo = -0.99, hi = 10;
+    if (npv(lo) * npv(hi) > 0) return null;
+    for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(lo) * npv(m) <= 0) hi = m; else lo = m; }
+    return (lo + hi) / 2;
+  }
+  function renderMonthly(list) {
+    const tb = $("#monthly tbody"), stats = $("#monStats"), rows = pnlSeries(list);
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">' + (!state.ready || !state.histReady ? "正在读取…" : "录入第一笔买入或存款，并点“刷新数据”后，这里按月汇总盈亏。") + "</td></tr>";
+      stats.hidden = true;
+      $("#monSum").textContent = "";
+      return;
+    }
+    const months = [];
+    let prev = { total: 0, stock: 0, fixed: 0 };
+    for (const r of rows) {
+      const key = r.date.slice(0, 7);
+      let m = months[months.length - 1];
+      if (!m || m.key !== key) { m = { key, start: prev, bases: [], last: r }; months.push(m); }
+      m.last = r;
+      m.bases.push(r.cost + r.fixedCost);
+      prev = { total: r.total, stock: r.value - r.cost + r.realized, fixed: r.fixedIncome };
+    }
+    for (const m of months) {
+      const r = m.last, base = m.bases.reduce((s, b) => s + b, 0) / m.bases.length;
+      m.stock = r.value - r.cost + r.realized - m.start.stock;
+      m.fixed = r.fixedIncome - m.start.fixed;
+      m.pnl = r.total - m.start.total;
+      m.ret = base > 0 ? m.pnl / base : null;
+    }
+    const last = rows[rows.length - 1], first = rows[0].date, days = dayDiff(first, last.date);
+    const rate = days >= 30 ? xirr(cashFlows(list, last.date, last.value + last.fixedValue)) : null;
+    const best = months.reduce((a, b) => (b.pnl > a.pnl ? b : a)), worst = months.reduce((a, b) => (b.pnl < a.pnl ? b : a));
+    const label = (k) => k.slice(0, 4) + " 年 " + Number(k.slice(5)) + " 月";
+    const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
+    stats.innerHTML =
+      stat("累计收益", signed(last.total), tone(last.total), last.pct == null ? "" : "按投入成本 " + pct(last.pct * 100)) +
+      stat("年化收益率", rate == null ? "—" : pct(rate * 100), rate == null ? "" : tone(rate),
+        rate == null ? (days < 30 ? "满 30 天后显示" : "暂时算不出") : days < 365 ? "投资 " + days + " 天，不满一年，仅供参考" : "资金加权，投资 " + days + " 天") +
+      stat("最好的月份", signed(best.pnl), tone(best.pnl), label(best.key)) +
+      stat("最差的月份", signed(worst.pnl), tone(worst.pnl), label(worst.key));
+    stats.hidden = false;
+    const up = months.filter((m) => m.pnl > 0.004).length;
+    $("#monSum").textContent = months.length + " 个月 · " + up + " 个月赚钱 · 月均 " + signed(last.total / months.length);
+    const cell = (v) => '<td class="num ' + tone(v) + '">' + signed(v) + "</td>";
+    tb.innerHTML = months.slice().reverse().map((m, i) =>
+      "<tr><td>" + label(m.key) + (i === 0 && m.last.date.slice(0, 7) === todayHK().slice(0, 7) ? "<small>本月，截至 " + md(m.last.date) + "</small>" : "") + "</td>" +
+      cell(m.stock) + cell(m.fixed) + cell(m.pnl).replace('class="num', 'style="font-weight:600" class="num') +
+      '<td class="num ' + (m.ret == null ? "" : tone(m.ret)) + '">' + (m.ret == null ? "—" : pct(m.ret * 100)) + "</td>" +
+      '<td class="num ' + tone(m.last.total) + '">' + signed(m.last.total) + "</td></tr>").join("");
+  }
+
   function niceTicks(lo, hi, n) {
     const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
     const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p, out = [];
@@ -1521,6 +1624,7 @@ TAL|好未来|TAL Education
     renderSummary(c);
     renderMix(c);
     renderPnl(list);
+    renderMonthly(list);
     renderHoldings(c);
     renderFixed();
     renderLog(list);
