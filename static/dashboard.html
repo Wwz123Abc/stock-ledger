@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>股票看板</title>
+<style>
+:root {
+  --color-bg: #EDF0F3; --color-panel: #FFFFFF; --color-fg: #16202A; --color-fg-muted: #5D6A77; --color-border-line: #D3DAE1;
+  --color-ok: #1C7F4F; --color-bad: #C2362B;
+  --cds-surface-popover: #FFFFFF; --cds-border: #D3DAE1; --cds-text-secondary: #5D6A77; --cds-shadow-popover: 0 6px 18px rgba(0, 0, 0, .14);
+  --cds-chart-grid: #E3E8ED; --cds-chart-axis: #8A96A3; --cds-chart-reference: #9A6400;
+  --s0: #2B5784; --s1: #A8742A; --s2: #7A5CA8; --s3: #2E8582; --s4: #B04A6F; --s5: #5D6A77;
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-lg: 24px;
+  --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 14px; --cds-pad-lg: 20px; --cds-radius: 10px;
+  --cds-font-size-caption: 12px; --cds-font-size-body: 14px; --cds-font-size-heading: 18px; --cds-font-size-title: 26px;
+  --cds-font-weight-medium: 500; --cds-dur-slow: 300ms;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #11161C; --color-panel: #19212A; --color-fg: #E5EAF0; --color-fg-muted: #95A2AF; --color-border-line: #2B3540;
+    --color-ok: #4DC28A; --color-bad: #F0695D;
+    --cds-surface-popover: #1F2832; --cds-border: #2B3540; --cds-text-secondary: #95A2AF; --cds-shadow-popover: 0 6px 18px rgba(0, 0, 0, .4);
+    --cds-chart-grid: #26303A; --cds-chart-axis: #6B7885; --cds-chart-reference: #E0A84A;
+    --s0: #82ABDA; --s1: #E0B062; --s2: #B59BE0; --s3: #6CC5C1; --s4: #E38AAA; --s5: #95A2AF;
+    color-scheme: dark;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--color-bg); color: var(--color-fg); padding: 24px 16px 48px; }
+.kx-card { position: relative; }
+.kx-table, .kx-wtable { color: var(--color-fg); }
+.dash-skeleton { opacity: .55; }
+.kx-gold-sub { margin-top: 2px !important; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.kx-gchart { position: relative; min-height: 240px; margin-top: var(--cds-gap-sm); touch-action: pan-y; }
+.kx-gchart svg { display: block; overflow: visible; }
+</style>
+<style>
+.kx { --kx-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif; display: grid; gap: var(--cds-gap-lg); font-family: var(--kx-font); font-variant-numeric: tabular-nums; max-width: 1120px; margin-inline: auto; }
+.kx h1, .kx h2, .kx p { margin: 0; }
+.kx-title { font-family: var(--kx-font); font-weight: 600; font-size: var(--cds-font-size-title); }
+.kx-take { margin-top: var(--cds-gap-xs); color: var(--color-fg-muted); font-size: var(--cds-font-size-body); max-width: 70ch; }
+.kx-take span { color: var(--color-fg); font-variant-numeric: tabular-nums; }
+.kx-nav { display: inline-block; margin-top: var(--cds-gap-sm); font-size: var(--cds-font-size-caption); color: var(--color-fg); }
+.kx-navrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--cds-gap-sm) var(--cds-gap-md, 16px); }
+.kx-refresh { margin-top: var(--cds-gap-sm); font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: none; border: 1px solid currentColor; border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+.kx-refresh:disabled { opacity: .6; cursor: default; }
+.kx-refresh-msg { margin: 4px 0 0; font-size: var(--cds-font-size-caption); opacity: .75; }
+.kx-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: var(--cds-gap-md); }
+.kx-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+.kx-tile { display: grid; gap: var(--cds-gap-xs); align-content: start; }
+.kx-k { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.kx-v { font-family: var(--kx-font); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.2; overflow-wrap: anywhere; }
+.kx-s { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.kx-up { color: var(--color-ok); }
+.kx-dn { color: var(--color-bad); }
+.kx-pnl-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--cds-gap-xs) var(--cds-gap-md); }
+.kx-pnl-v { font-family: var(--kx-font); font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; }
+.kx-pnl { position: relative; min-height: 240px; margin-top: var(--cds-gap-sm); }
+.kx-pnl svg { display: block; overflow: visible; }
+.kx-wgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--cds-gap-lg); align-items: center; margin-top: var(--cds-gap-sm); }
+.kx-pie { position: relative; min-height: 240px; max-width: 320px; width: 100%; margin-inline: auto; }
+.kx-pie svg { display: block; }
+.kx-pie-c { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.kx-pie-c .kx-pie-v { font-family: var(--kx-font); font-size: var(--cds-font-size-heading); font-variant-numeric: tabular-nums; }
+.kx-wtable { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+.kx-wtable th { text-align: right; font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); }
+.kx-wtable td { text-align: right; padding: var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); }
+.kx-wtable th:nth-child(-n+2), .kx-wtable td:nth-child(-n+2) { text-align: left; }
+.kx-wtable tbody tr { cursor: pointer; }
+.kx-wtable tbody tr:last-child td { border-bottom: 0; }
+.kx-wtable td:first-child::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--kx-sw); margin-right: 8px; vertical-align: -1px; }
+.kx-h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+.kx-chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.kx-picker, .kx-ranges { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); }
+.kx-btn { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-radius: var(--cds-radius); border: 1px solid var(--color-border-line); background: transparent; color: var(--color-fg-muted); cursor: pointer; font-variant-numeric: tabular-nums; }
+.kx-btn[aria-pressed="true"] { color: var(--color-fg); border-color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); }
+.kx-btn:focus-visible { outline: 2px solid var(--color-fg-muted); outline-offset: 2px; }
+.kx-sym { font-family: var(--kx-font); font-size: var(--cds-font-size-title); font-weight: 400; margin-top: var(--cds-gap-md); }
+.kx-sym small { font-family: var(--kx-font); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin-left: var(--cds-gap-sm); }
+.kx-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); gap: var(--cds-gap-sm) var(--cds-gap-md); margin: var(--cds-gap-sm) 0 0; }
+.kx-stats div { min-width: 0; }
+.kx-stats dt { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.kx-stats dd { margin: 0; font-variant-numeric: tabular-nums; font-size: var(--cds-font-size-body); }
+.kx-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); margin-top: var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.kx-legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
+.kx-legend i.kx-dash { height: 0; border-top: 2px dashed var(--cds-chart-reference); }
+.kx-chart { position: relative; min-height: 340px; margin-top: var(--cds-gap-sm); touch-action: pan-y; user-select: none; cursor: grab; }
+.kx-chart:active { cursor: grabbing; }
+.kx-chart svg { display: block; overflow: visible; }
+.kx-tick { font-size: 11px; fill: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.kx-cost { font-size: 11px; fill: var(--color-fg-muted); }
+.kx-bs { font-size: 10px; font-weight: 600; }
+.kx-tip { position: absolute; top: 8px; z-index: 2; min-width: 10rem; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); pointer-events: none; font-variant-numeric: tabular-nums; }
+.kx-tip .kx-td { color: var(--cds-text-secondary); margin-bottom: 2px; }
+.kx-tip .kx-row { display: flex; justify-content: space-between; gap: var(--cds-gap-md); }
+.kx-tip .kx-row span:first-child { color: var(--color-fg-muted); }
+.kx-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); min-height: 340px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.kx-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+/* "?" help: a small round button beside a heading; its text opens as a card below the heading */
+.kx-htitle { position: relative; display: flex; align-items: center; gap: var(--cds-gap-sm); min-width: 0; }
+.kx-help > summary { list-style: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--color-border-line); color: var(--color-fg-muted); font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer; user-select: none; }
+.kx-help > summary::-webkit-details-marker { display: none; }
+.kx-help > summary:hover, .kx-help[open] > summary { color: var(--color-fg); border-color: var(--color-fg-muted); }
+.kx-help > summary:focus-visible { outline: 2px solid var(--color-fg-muted); outline-offset: 2px; }
+.kx-help-body { box-sizing: border-box; position: absolute; left: 0; top: calc(100% + 8px); z-index: 10; width: min(520px, calc(100vw - 64px)); background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-sm) var(--cds-pad-md, 14px); font-family: var(--kx-font); font-size: var(--cds-font-size-caption); font-weight: 400; line-height: 1.65; color: var(--color-fg); }
+.kx .kx-help-body p { margin: 0 0 6px; }
+.kx .kx-help-body p:last-child { margin: 0; }
+.kx-scroll { overflow-x: auto; margin-top: var(--cds-gap-sm); }
+.kx-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; min-width: 760px; }
+.kx-table th { text-align: right; font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.kx-table td { text-align: right; padding: var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.kx-table th:nth-child(-n+2), .kx-table td:nth-child(-n+2) { text-align: left; }
+.kx-table tbody tr { cursor: pointer; }
+.kx-table tbody tr:last-child td { border-bottom: 0; }
+.kx-table tbody tr[aria-selected="true"] td:first-child { font-weight: var(--cds-font-weight-medium); }
+.kx-closed td { color: var(--color-fg-muted); }
+@media (max-width: 680px) {
+  .kx-card { padding: var(--cds-pad-md); }
+  .kx-btn { padding: 6px 12px; }
+  .kx-refresh { padding: 6px 14px; }
+  .kx-nav { padding: 6px 0; }
+  /* Holdings detail as cards: symbol and unrealized P&L, name and P&L %, then six labelled figures */
+  .kx-table { min-width: 0; }
+  .kx-table thead { display: none; }
+  .kx-table tbody tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-areas: "sym sym sym unr unr unr" "nm nm nm upc upc upc" "sh sh av av lc lc" "dc dc mv mv re re"; gap: 2px 8px; padding: 10px 0; border-bottom: 1px solid var(--color-border-line); }
+  .kx-table tbody tr:last-child { border-bottom: 0; }
+  .kx-table td, .kx-table tbody tr:last-child td { border: 0; padding: 0; text-align: left; white-space: normal; min-width: 0; }
+  .kx-table td:nth-child(1) { grid-area: sym; font-weight: var(--cds-font-weight-medium); }
+  .kx-table td:nth-child(2) { grid-area: nm; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .kx-table td:nth-child(3) { grid-area: sh; }
+  .kx-table td:nth-child(4) { grid-area: av; }
+  .kx-table td:nth-child(5) { grid-area: lc; }
+  .kx-table td:nth-child(6) { grid-area: dc; }
+  .kx-table td:nth-child(7) { grid-area: mv; }
+  .kx-table td:nth-child(8) { grid-area: unr; text-align: right; font-weight: var(--cds-font-weight-medium); }
+  .kx-table td:nth-child(9) { grid-area: upc; text-align: right; font-size: var(--cds-font-size-caption); }
+  .kx-table td:nth-child(10) { grid-area: re; }
+  .kx-table td:nth-child(n+3):nth-child(-n+5) { margin-top: 8px; }
+  .kx-table td:nth-child(n+3):not(:nth-child(8)):not(:nth-child(9))::before { display: block; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-weight: 400; }
+  .kx-table td:nth-child(3)::before { content: "股数"; }
+  .kx-table td:nth-child(4)::before { content: "平均成本"; }
+  .kx-table td:nth-child(5)::before { content: "最新收盘"; }
+  .kx-table td:nth-child(6)::before { content: "当日涨跌"; }
+  .kx-table td:nth-child(7)::before { content: "市值"; }
+  .kx-table td:nth-child(10)::before { content: "已实现盈亏"; }
+}
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+<script src="/assets/d3.min.js"></script>
+</head>
+<body>
+
+
+<div class="kx">
+  <header id="overview">
+    <div class="kx-htitle"><h1 class="kx-title">股票看板</h1><details class="kx-help"><summary aria-label="这个页面怎么用">?</summary><div class="kx-help-body"><p>持仓、资产占比、交易和收益走势都在美股持仓账本首页，这里看 K 线、金价和汇率。绿涨红跌。</p><p>日 K 线来自腾讯财经，汇率来自新浪财经。点“刷新数据”会当场取最新数据，几秒完成。</p></div></details></div>
+    <p class="kx-take" hidden>持有 <span class="dash-skeleton" data-source="totals" data-field="positions" data-row="0">—</span> 只股票，按 <span class="dash-skeleton" data-source="totals" data-field="as_of" data-row="0">—</span> 收盘价，市值 <span class="dash-skeleton" data-source="totals" data-field="market_value_usd" data-row="0">—</span>，浮动盈亏 <span class="dash-skeleton kx-tone" data-source="totals" data-field="unrealized_usd" data-row="0">—</span>（<span class="dash-skeleton kx-tone" data-source="totals" data-field="unrealized_pct" data-row="0">—</span>），已实现盈亏 <span class="dash-skeleton kx-tone" data-source="totals" data-field="realized_usd" data-row="0">—</span>。</p>
+    <div class="kx-navrow">
+      <button class="kx-refresh" type="button" id="kxRefresh">↻ 刷新数据</button>
+      <a class="kx-nav" href="/">← 回到美股持仓账本</a>
+    </div>
+    <p class="kx-refresh-msg" id="kxRefreshMsg" hidden></p>
+  </header>
+
+  <section class="kx-card" id="kline" aria-labelledby="kline-h">
+    <div class="kx-chart-head">
+      <div class="kx-htitle"><h2 class="kx-h2" id="kline-h">日 K 线</h2><details class="kx-help"><summary aria-label="K 线怎么看">?</summary><div class="kx-help-body"><p>每根蜡烛是一个交易日，取美股或港股常规交易时段的数据，绿涨红跌。默认显示从你第一笔买入（建仓）那天起的 K 线。</p><p>滚动鼠标滚轮或双指缩放，按住拖动可左右平移，也可以用 ＋ － 按钮。把鼠标移到图上或用手指按住，可看当天的开高低收。</p></div></details></div>
+      <div class="kx-ranges" role="group" aria-label="时间范围">
+        <button class="kx-btn" type="button" data-range="since">建仓以来</button>
+        <button class="kx-btn" type="button" data-range="21">1 月</button>
+        <button class="kx-btn" type="button" data-range="63">3 月</button>
+        <button class="kx-btn" type="button" data-range="126">6 月</button>
+        <button class="kx-btn" type="button" data-range="9999">1 年</button>
+        <button class="kx-btn" type="button" data-zoom="in" aria-label="放大">＋</button>
+        <button class="kx-btn" type="button" data-zoom="out" aria-label="缩小">－</button>
+      </div>
+    </div>
+    <div class="kx-picker" role="group" aria-label="选择股票" style="margin-top: var(--cds-gap-sm)"></div>
+    <p class="kx-sym"><span class="kx-sym-code">—</span><small class="kx-sym-name"></small></p>
+    <dl class="kx-stats">
+      <div><dt>最新收盘</dt><dd class="kx-stat" data-source="holdings" data-field="last_close">—</dd></div>
+      <div><dt>当日涨跌</dt><dd class="kx-stat kx-tone" data-source="holdings" data-field="day_change_pct">—</dd></div>
+      <div><dt>持有股数</dt><dd class="kx-stat" data-source="holdings" data-field="shares">—</dd></div>
+      <div><dt>平均成本</dt><dd class="kx-stat" data-source="holdings" data-field="avg_cost">—</dd></div>
+      <div><dt>浮动盈亏</dt><dd class="kx-stat kx-tone" data-source="holdings" data-field="unrealized">—</dd></div>
+      <div><dt>盈亏比例</dt><dd class="kx-stat kx-tone" data-source="holdings" data-field="unrealized_pct">—</dd></div>
+      <div><dt>52 周最高</dt><dd class="kx-stat" data-source="holdings" data-field="high_52w">—</dd></div>
+      <div><dt>52 周最低</dt><dd class="kx-stat" data-source="holdings" data-field="low_52w">—</dd></div>
+    </dl>
+    <div class="kx-legend" aria-hidden="true">
+      <span><i class="kx-ma0"></i>MA5</span>
+      <span><i class="kx-ma1"></i>MA20</span>
+      <span><i class="kx-ma2"></i>MA60</span>
+      <span><i class="kx-dash"></i>平均成本</span>
+      <span class="kx-up">▲ B 买入</span>
+      <span class="kx-dn">▼ S 卖出</span>
+    </div>
+    <div class="kx-chart dash-skeleton" id="kline-chart" data-source="candles trades holdings"><div class="kx-tip" hidden></div></div>
+  </section>
+
+  <section class="kx-card" id="positions" hidden aria-labelledby="positions-h">
+    <div class="kx-htitle"><h2 class="kx-h2" id="positions-h">持仓明细</h2><details class="kx-help"><summary aria-label="持仓明细说明">?</summary><div class="kx-help-body"><p>点一行可以在上面的 K 线图里查看这只股票。</p></div></details></div>
+    <div class="kx-scroll">
+      <table class="kx-table" data-source="holdings" data-row-key="symbol">
+        <thead><tr>
+          <th data-field="symbol">代码</th><th data-field="name">名称</th><th data-field="shares">股数</th>
+          <th data-field="avg_cost">平均成本</th><th data-field="last_close">最新收盘</th><th data-field="day_change_pct">当日涨跌</th>
+          <th data-field="market_value">市值</th><th data-field="unrealized">浮动盈亏</th><th data-field="unrealized_pct">盈亏比例</th><th data-field="realized">已实现盈亏</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="kx-card kx-watch" id="gold" aria-labelledby="gold-h">
+    <div class="kx-chart-head">
+      <div class="kx-htitle"><h2 class="kx-h2" id="gold-h">金价</h2><details class="kx-help"><summary aria-label="金价说明">?</summary><div class="kx-help-body"><p>纽约黄金期货（COMEX）近月合约，单位美元/盎司，来自新浪财经，点“刷新数据”更新。只做观察，不计入你的持仓和收益。</p><p>1 盎司（金衡盎司）= 31.1035 克。</p><p>“近 10 年最高”只在 2016 年 10 月以来的数据里找。</p></div></details></div>
+      <div class="kx-ranges" role="group" aria-label="金价时间范围">
+        <button class="kx-btn" type="button" data-months="12">1 年</button>
+        <button class="kx-btn" type="button" data-months="36">3 年</button>
+        <button class="kx-btn" type="button" data-months="60">5 年</button>
+        <button class="kx-btn" type="button" data-months="120">10 年</button>
+      </div>
+    </div>
+    <p class="kx-sym"><span class="kx-w-px">—</span><small class="kx-w-chg"></small></p>
+    <p class="kx-gold-sub kx-w-sub"></p>
+    <dl class="kx-stats kx-w-stats"></dl>
+    <div class="kx-gchart kx-w-chart"><div class="kx-tip" hidden></div></div>
+  </section>
+
+  <section class="kx-card kx-watch" id="usdcny" aria-labelledby="usdcny-h">
+    <div class="kx-chart-head">
+      <div class="kx-htitle"><h2 class="kx-h2" id="usdcny-h">美元兑人民币</h2><details class="kx-help"><summary aria-label="美元兑人民币说明">?</summary><div class="kx-help-body"><p>在岸人民币（CNY）兑美元的每日汇率：开盘、最高、最低、收盘，精确到小数点后 4 位，来自新浪财经，点“刷新数据”更新。今天的数字在交易时段内会继续变动。</p><p>数字越大，1 美元能换的人民币越多，即人民币越弱、美元越强。</p><p>“全部”从 2005 年 7 月 21 日人民币汇率形成机制改革开始。只做观察，不参与账本里的任何计算。</p></div></details></div>
+      <div class="kx-ranges" role="group" aria-label="美元兑人民币时间范围">
+        <button class="kx-btn" type="button" data-months="1">1 月</button>
+        <button class="kx-btn" type="button" data-months="3">3 月</button>
+        <button class="kx-btn" type="button" data-months="12">1 年</button>
+        <button class="kx-btn" type="button" data-months="60">5 年</button>
+        <button class="kx-btn" type="button" data-months="120">10 年</button>
+        <button class="kx-btn" type="button" data-months="0">全部</button>
+      </div>
+    </div>
+    <p class="kx-sym"><span class="kx-w-px">—</span><small class="kx-w-chg"></small></p>
+    <p class="kx-gold-sub kx-w-sub"></p>
+    <dl class="kx-stats kx-w-stats"></dl>
+    <div class="kx-gchart kx-w-chart"><div class="kx-tip" hidden></div></div>
+  </section>
+
+  <section class="kx-card" id="weights" hidden aria-labelledby="weights-h">
+    <div class="kx-htitle"><h2 class="kx-h2" id="weights-h">仓位占比</h2><details class="kx-help"><summary aria-label="仓位占比说明">?</summary><div class="kx-help-body"><p>按最新收盘价的市值计算，港股按当前汇率（两位小数）折成美元。</p><p>点一块或一行可以在上面的 K 线图里查看。</p></div></details></div>
+    <div class="kx-wgrid">
+      <div class="kx-pie dash-skeleton" id="weights-chart" data-source="weights">
+        <div class="kx-pie-c"><span class="kx-k">总市值</span><span class="kx-pie-v" data-source="totals" data-field="market_value_usd" data-row="0">—</span></div>
+        <div class="kx-tip" hidden></div>
+      </div>
+      <table class="kx-wtable" data-source="weights" data-row-key="symbol">
+        <thead><tr><th data-field="symbol">代码</th><th data-field="name">名称</th><th data-field="market_value_usd">市值（美元）</th><th data-field="weight">占比</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+window.dash = (() => {
+  const calcs = {}, data = {};
+  let cb = null;
+  const run = () => { if (cb) cb(); };
+  return {
+    colors: ["var(--s0)", "var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)"],
+    calc(id, o) { calcs[id] = o; },
+    data: (id) => data[id] || { status: "loading", data: [] },
+    onData(fn) { cb = fn; run(); },
+    _set(base) {
+      for (const k in base) data[k] = { status: "ok", data: base[k] };
+      for (const id of ["holdings", "totals", "weights"]) {
+        const c = calcs[id];
+        data[id] = { status: "ok", data: c.fn(...c.inputs.map((k) => data[k].data)) };
+      }
+      run();
+    },
+    _fail() { for (const k of ["candles", "trades", "fx", "holdings", "totals", "weights"]) data[k] = { status: "error", data: [] }; run(); },
+    _redraw: run,
+  };
+})();
+</script>
+<script>
+dash.calc("holdings", {
+  title: "每只股票的持仓",
+  description: "按交易记录用移动平均法算持股和成本，再用最新一根日 K 线的收盘价算市值和盈亏。",
+  inputs: ["trades", "candles"],
+  fn: (trades, candles) => {
+    const bars = {};
+    for (const c of candles) (bars[c.symbol] = bars[c.symbol] || []).push(c);
+    const pos = {};
+    const ordered = trades.slice().sort((a, b) => (a.date + (a.created_at || "")).localeCompare(b.date + (b.created_at || "")));
+    for (const t of ordered) {
+      const q = Number(t.shares), p = Number(t.price), f = Number(t.fees) || 0;
+      const s = pos[t.symbol] = pos[t.symbol] || { shares: 0, cost: 0, realized: 0, currency: t.currency };
+      if (t.side === "buy") { s.shares += q; s.cost += q * p + f; continue; }
+      const sold = Math.min(q, s.shares), avg = s.shares > 0 ? s.cost / s.shares : 0;
+      s.realized += sold * p - f - avg * sold;
+      s.cost -= avg * sold; s.shares -= sold;
+      if (s.shares < 1e-9) { s.shares = 0; s.cost = 0; }
+    }
+    return Object.keys(pos).map((symbol) => {
+      const s = pos[symbol];
+      const b = (bars[symbol] || []).slice().sort((x, y) => x.date.localeCompare(y.date));
+      const last = b[b.length - 1], prev = b[b.length - 2];
+      const close = last ? Number(last.close) : null;
+      const value = close == null ? null : close * s.shares;
+      return {
+        symbol, name: last ? last.name : "", currency: last ? last.currency : s.currency,
+        shares: s.shares, avg_cost: s.shares > 0 ? s.cost / s.shares : null, cost: s.cost,
+        last_close: close, last_date: last ? last.date : null,
+        day_change_pct: last && prev ? Number(last.close) / Number(prev.close) - 1 : null,
+        market_value: value, unrealized: value == null ? null : value - s.cost,
+        unrealized_pct: value != null && s.cost > 0 ? value / s.cost - 1 : null,
+        realized: s.realized,
+        high_52w: b.length ? Math.max(...b.map((x) => Number(x.high))) : null,
+        low_52w: b.length ? Math.min(...b.map((x) => Number(x.low))) : null,
+      };
+    });
+  },
+});
+
+dash.calc("totals", {
+  title: "持仓总计",
+  description: "把每只股票的市值、成本和盈亏按最新汇率折成美元后相加，再把市值折成港元。",
+  inputs: ["holdings", "fx"],
+  fn: (holdings, fx) => {
+    const rate = (pair) => Math.round(Number((fx.find((r) => r.pair === pair) || {}).rate) * 100) / 100 || null;
+    const hkd = rate("USDHKD") || 7.8;
+    const usd = (v, c) => (v == null ? 0 : c === "HKD" ? v / hkd : v);
+    const held = holdings.filter((h) => h.shares > 0);
+    const add = (rows, f) => rows.reduce((t, h) => t + usd(f(h), h.currency), 0);
+    const value = add(held, (h) => h.market_value), cost = add(held, (h) => h.cost);
+    const dates = held.map((h) => h.last_date).filter(Boolean).sort();
+    return [{
+      positions: held.length,
+      market_value_usd: value, market_value_hkd: value * hkd,
+      cost_usd: cost, unrealized_usd: value - cost, unrealized_pct: cost > 0 ? value / cost - 1 : null,
+      realized_usd: add(holdings, (h) => h.realized),
+      total_pnl_usd: value - cost + add(holdings, (h) => h.realized),
+      as_of: dates.length ? dates[dates.length - 1] : null,
+    }];
+  },
+});
+
+dash.calc("weights", {
+  title: "仓位占比",
+  description: "每只还持有的股票按最新收盘价算市值，港股按当前汇率（两位小数）折成美元，再除以总市值。",
+  inputs: ["holdings", "fx"],
+  fn: (holdings, fx) => {
+    const hkd = Math.round(Number((fx.find((r) => r.pair === "USDHKD") || {}).rate) * 100) / 100 || 7.8;
+    const rows = holdings.filter((h) => h.shares > 0 && h.market_value != null).map((h) => ({
+      symbol: h.symbol, name: h.name,
+      market_value_usd: h.currency === "HKD" ? h.market_value / hkd : h.market_value,
+    }));
+    const total = rows.reduce((t, r) => t + r.market_value_usd, 0);
+    return rows.sort((a, b) => b.market_value_usd - a.market_value_usd)
+      .map((r) => ({ ...r, weight: total > 0 ? r.market_value_usd / total : null }));
+  },
+});
+
+(() => {
+  const root = document.querySelector(".kx");
+  const st = { sym: null, count: 126, end: null, since: true, first: null };
+  const f2 = d3.format(",.2f");
+  const cur = (c) => (c === "HKD" ? "HK$" : "$");
+  const money = (v, c) => (v == null ? "—" : (v < 0 ? "−" : "") + cur(c) + f2(Math.abs(v)));
+  const sMoney = (v, c) => (v == null ? "—" : (v > 0.004 ? "+" : v < -0.004 ? "−" : "") + cur(c) + f2(Math.abs(v)));
+  const pct = (v) => (v == null ? "—" : (v > 0.00004 ? "+" : v < -0.00004 ? "−" : "") + d3.format(".2%")(Math.abs(v)));
+  const shares = (v) => (v == null ? "—" : d3.format(",~f")(v));
+  const volume = (v) => new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(v);
+  const tone = (el, v) => { el.classList.toggle("kx-up", v > 0.00004); el.classList.toggle("kx-dn", v < -0.00004); };
+  const enc = (s) => encodeURIComponent(s);
+  const md = (s) => { const p = String(s).split("-"); return Number(p[1]) + "/" + Number(p[2]); };
+
+  // Legend swatches take the series colors the chart uses.
+  root.querySelectorAll(".kx-legend i[class^='kx-ma']").forEach((el) => { el.style.background = dash.colors[Number(el.className.slice(5))]; });
+
+  const ranges = root.querySelectorAll(".kx-ranges .kx-btn");
+  ranges.forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.zoom) { zoom(b.dataset.zoom === "in" ? 1 / 1.5 : 1.5, null); return; }
+    st.since = b.dataset.range === "since"; if (!st.since) st.count = Number(b.dataset.range); st.end = null; redraw();
+  }));
+  const picker = root.querySelector(".kx-picker");
+  picker.addEventListener("click", (e) => { const b = e.target.closest("button[data-sym]"); if (b) { st.sym = b.dataset.sym; st.end = null; redraw(); } });
+  root.querySelector(".kx-table").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-key]");
+    if (tr) { st.sym = tr.dataset.key; st.end = null; redraw(); root.querySelector("#kline").scrollIntoView({ block: "start", behavior: "smooth" }); }
+  });
+
+  root.querySelector(".kx-wtable").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-key]");
+    if (tr) { st.sym = tr.dataset.key; st.end = null; redraw(); root.querySelector("#kline").scrollIntoView({ block: "start", behavior: "smooth" }); }
+  });
+
+  let last = null;
+  const redraw = () => last && render(last);
+
+  // K-line zoom and pan: wheel or two-finger pinch zooms, dragging pans. The chart is redrawn
+  // from st.count (bars shown) and st.end (index of the last bar shown, null = latest).
+  const kbox = root.querySelector("#kline-chart");
+  let lay = null;
+  const ptrs = new Map();
+  let drag = null, pinch = null;
+  const toX = (clientX) => { const r = kbox.getBoundingClientRect(); return ((clientX - r.left) * lay.W) / r.width; };
+  const idxAt = (clientX) => Math.max(0, Math.min(lay.vis.length - 1, Math.round((toX(clientX) - lay.cx0) / lay.step)));
+  const minBars = () => Math.min(10, lay.all.length);
+  function setWindow(count, end) {
+    const n = lay.all.length;
+    count = Math.max(minBars(), Math.min(n, Math.round(count)));
+    end = Math.max(count - 1, Math.min(n - 1, Math.round(end)));
+    if (count === lay.vis.length && end === lay.start + lay.vis.length - 1) return;
+    st.count = count; st.end = end === n - 1 ? null : end; st.since = false;
+    redraw();
+  }
+  function anchorAt(clientX) {
+    const v = lay.vis.length, i = clientX == null ? (v - 1) / 2 : idxAt(clientX);
+    return { at: lay.start + i, frac: v > 1 ? i / (v - 1) : 1, count: v };
+  }
+  function zoomFrom(a, factor) {
+    const cnt = Math.max(minBars(), Math.min(lay.all.length, Math.round(a.count * factor)));
+    setWindow(cnt, a.at - a.frac * (cnt - 1) + cnt - 1);
+  }
+  function zoom(factor, clientX) { if (lay) zoomFrom(anchorAt(clientX), factor); }
+  function hideTip() { kbox.querySelector(".kx-tip").hidden = true; if (lay) lay.cross.style("opacity", 0); }
+  function tipLine(k, v, cls) {
+    const r = document.createElement("div"); r.className = "kx-row";
+    const a = document.createElement("span"); a.textContent = k;
+    const b = document.createElement("span"); b.textContent = v; if (cls) b.className = cls;
+    r.append(a, b); return r;
+  }
+  function showTip(clientX) {
+    if (!lay) return;
+    const i = idxAt(clientX), d = lay.vis[i], prev = lay.all[lay.start + i - 1], tip = kbox.querySelector(".kx-tip");
+    lay.cross.attr("x1", lay.cx(d)).attr("x2", lay.cx(d)).style("opacity", 1);
+    const chg = prev ? d.close / prev.close - 1 : null;
+    const head = document.createElement("div"); head.className = "kx-td"; head.textContent = d.date + " 日K";
+    const parts = [head, tipLine("开", f2(d.open)), tipLine("高", f2(d.high)), tipLine("低", f2(d.low)), tipLine("收", f2(d.close)),
+      tipLine("涨跌", pct(chg), chg > 0 ? "kx-up" : chg < 0 ? "kx-dn" : ""), tipLine("成交量", volume(d.volume))];
+    lay.mas.forEach((arr, k) => { const v = arr[lay.start + i]; if (v != null) parts.push(tipLine(["MA5", "MA20", "MA60"][k], f2(v))); });
+    lay.trades.filter((t) => lay.dates.find((v) => v >= String(t.date).slice(0, 10)) === d.date).forEach((t) => {
+      parts.push(tipLine(t.side === "buy" ? "你买入" : "你卖出", shares(+t.shares) + " 股 @ " + f2(+t.price), t.side === "buy" ? "kx-up" : "kx-dn"));
+    });
+    tip.replaceChildren(...parts);
+    tip.hidden = false;
+    const bw = kbox.clientWidth, tw = tip.offsetWidth, px = (lay.cx(d) / lay.W) * bw;
+    tip.style.left = Math.max(0, Math.min(bw - tw, px > bw / 2 ? px - tw - 12 : px + 12)) + "px";
+  }
+  kbox.addEventListener("wheel", (e) => {
+    if (!lay) return;
+    e.preventDefault();
+    zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, e.clientX);
+  }, { passive: false });
+  kbox.addEventListener("pointerdown", (e) => {
+    if (!lay || !e.target.closest("svg")) return;
+    try { kbox.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+    ptrs.set(e.pointerId, e.clientX);
+    if (ptrs.size === 1) drag = { x: e.clientX, end: lay.start + lay.vis.length - 1, count: lay.vis.length, moved: false };
+    if (ptrs.size === 2) {
+      const xs = [...ptrs.values()];
+      pinch = { dist: Math.max(10, Math.abs(xs[0] - xs[1])), a: anchorAt((xs[0] + xs[1]) / 2) };
+      drag = null; hideTip();
+    }
+    if (ptrs.size === 1) showTip(e.clientX);
+  });
+  kbox.addEventListener("pointermove", (e) => {
+    if (!lay) return;
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, e.clientX);
+    if (pinch && ptrs.size === 2) {
+      const xs = [...ptrs.values()];
+      zoomFrom(pinch.a, pinch.dist / Math.max(10, Math.abs(xs[0] - xs[1])));
+    } else if (drag && ptrs.has(e.pointerId)) {
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      if (drag.moved) {
+        hideTip();
+        const perBar = (lay.step * kbox.getBoundingClientRect().width) / lay.W;
+        setWindow(drag.count, drag.end - dx / perBar);
+      } else showTip(e.clientX);
+    } else if (!ptrs.size && e.target.closest("svg")) showTip(e.clientX);
+  });
+  const release = (e) => {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch = null;
+    if (!ptrs.size) drag = null;
+  };
+  kbox.addEventListener("pointerup", release);
+  kbox.addEventListener("pointercancel", release);
+  kbox.addEventListener("pointerleave", (e) => { if (!ptrs.size) hideTip(); });
+
+  function render(D) {
+    last = D;
+    const T = D.totals, H = D.holdings, C = D.candles, TR = D.trades;
+    const t0 = T.status === "ok" && T.data[0] ? T.data[0] : null;
+    st.first = TR.status === "ok" && TR.data.length ? TR.data.map((t) => String(t.date).slice(0, 10)).sort()[0] : null;
+
+    // Header and tiles.
+    root.querySelectorAll('[data-source="totals"]').forEach((el) => {
+      const f = el.dataset.field, v = t0 ? t0[f] : null;
+      el.classList.toggle("dash-skeleton", T.status === "loading");
+      el.textContent = !t0 ? "—"
+        : f === "positions" ? String(v)
+        : f === "as_of" ? (v || "—")
+        : f === "unrealized_pct" ? pct(v)
+        : f === "market_value_hkd" ? money(v, "HKD")
+        : f === "unrealized_usd" || f === "realized_usd" || f === "total_pnl_usd" ? sMoney(v, "USD")
+        : money(v, "USD");
+      if (el.classList.contains("kx-tone")) tone(el, t0 ? v : 0);
+    });
+
+    const rows = H.status === "ok" ? H.data.slice().sort((a, b) => (b.shares > 0) - (a.shares > 0) || (b.market_value || 0) - (a.market_value || 0) || a.symbol.localeCompare(b.symbol)) : [];
+    if (!rows.some((r) => r.symbol === st.sym)) st.sym = rows.length ? rows[0].symbol : null;
+    const h = rows.find((r) => r.symbol === st.sym) || null;
+
+    // Stock picker and range buttons.
+    picker.replaceChildren(...rows.map((r) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "kx-btn"; b.dataset.sym = r.symbol;
+      b.textContent = r.symbol + (r.shares > 0 ? "" : "（已清仓）");
+      b.setAttribute("aria-pressed", String(r.symbol === st.sym));
+      return b;
+    }));
+    ranges.forEach((b) => { if (b.dataset.range) b.setAttribute("aria-pressed", String(b.dataset.range === "since" ? st.since : !st.since && st.end === null && Number(b.dataset.range) === st.count)); });
+
+    // Selected stock's figures.
+    root.querySelector(".kx-sym-code").textContent = h ? h.symbol : "—";
+    root.querySelector(".kx-sym-name").textContent = h ? h.name : "";
+    root.querySelectorAll(".kx-stat").forEach((el) => {
+      const f = el.dataset.field, v = h ? h[f] : null;
+      if (h) el.dataset.where = "symbol=" + enc(h.symbol); else delete el.dataset.where;
+      el.textContent = !h ? "—"
+        : f === "shares" ? shares(v)
+        : f === "day_change_pct" || f === "unrealized_pct" ? pct(v)
+        : f === "unrealized" ? sMoney(v, h.currency)
+        : money(v, h.currency);
+      if (el.classList.contains("kx-tone")) tone(el, h ? v : 0);
+    });
+
+    // Chart.
+    const box = root.querySelector("#kline-chart");
+    lay = null;
+    box.querySelectorAll("svg, .kx-fail").forEach((n) => n.remove());
+    box.querySelector(".kx-tip").hidden = true;
+    const failed = [C, TR, H].some((x) => x.status === "error" || x.status === "missing");
+    const ready = C.status === "ok" && TR.status === "ok" && H.status === "ok";
+    box.classList.toggle("dash-skeleton", !ready && !failed);
+    if (failed) {
+      const p = document.createElement("div"); p.className = "kx-fail"; p.textContent = "数据读取失败，刷新页面试试"; box.append(p);
+    } else if (ready && h) {
+      const bars = C.data.filter((c) => c.symbol === h.symbol)
+        .map((c) => ({ date: String(c.date).slice(0, 10), open: +c.open, high: +c.high, low: +c.low, close: +c.close, volume: +c.volume || 0 }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const trades = TR.data.filter((t) => t.symbol === h.symbol);
+      if (bars.length) drawChart(box, bars, trades, h);
+    }
+
+    // Position weights.
+    const wbox = root.querySelector("#weights-chart");
+    wbox.querySelectorAll("svg, .kx-fail").forEach((n) => n.remove());
+    wbox.querySelector(".kx-tip").hidden = true;
+    const Wd = D.weights;
+    const wFailed = Wd.status === "error" || Wd.status === "missing";
+    wbox.classList.toggle("dash-skeleton", Wd.status !== "ok" && !wFailed);
+    const wrows = Wd.status === "ok" ? Wd.data : [];
+    if (wFailed) {
+      const p = document.createElement("div"); p.className = "kx-fail"; p.style.minHeight = "240px"; p.textContent = "数据读取失败，刷新页面试试"; wbox.append(p);
+    } else if (wrows.length) drawPie(wbox, wrows);
+    const wtb = root.querySelector(".kx-wtable tbody");
+    wtb.replaceChildren(...wrows.map((r, i) => {
+      const tr = document.createElement("tr");
+      tr.dataset.key = r.symbol;
+      tr.style.setProperty("--kx-sw", dash.colors[i % dash.colors.length]);
+      [r.symbol, r.name || "—", money(r.market_value_usd, "USD"), r.weight == null ? "—" : d3.format(".1%")(r.weight)].forEach((t) => {
+        const td = document.createElement("td"); td.textContent = t; tr.append(td);
+      });
+      return tr;
+    }));
+
+    // Holdings table.
+    const tb = root.querySelector(".kx-table tbody");
+    tb.replaceChildren(...rows.map((r) => {
+      const tr = document.createElement("tr");
+      tr.dataset.key = r.symbol;
+      tr.setAttribute("aria-selected", String(r.symbol === st.sym));
+      if (!(r.shares > 0)) tr.className = "kx-closed";
+      const cells = [
+        [r.symbol], [r.name || "—"], [shares(r.shares)], [money(r.avg_cost, r.currency)], [money(r.last_close, r.currency)],
+        [pct(r.day_change_pct), r.day_change_pct], [money(r.market_value, r.currency)],
+        [sMoney(r.unrealized, r.currency), r.unrealized], [pct(r.unrealized_pct), r.unrealized_pct],
+        [sMoney(r.realized, r.currency), r.realized],
+      ];
+      cells.forEach(([text, sign]) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (sign != null) tone(td, sign);
+        tr.append(td);
+      });
+      return tr;
+    }));
+  }
+
+  function drawChart(box, all, trades, h) {
+    const W = Math.max(280, Math.floor(box.clientWidth));
+    const narrow = W < 560;
+    const PH = narrow ? 220 : 300, GAP = 14, VH = narrow ? 52 : 70, AX = 22;
+    const HT = PH + GAP + VH + AX;
+    const ma = (n) => all.map((b, i) => (i + 1 >= n ? d3.mean(all.slice(i + 1 - n, i + 1), (d) => d.close) : null));
+    const mas = [ma(5), ma(20), ma(60)];
+    const want = st.since && st.first ? all.filter((b) => b.date >= st.first).length : st.count;
+    const count = Math.max(Math.min(10, all.length), Math.min(all.length, want));
+    const endIdx = st.since || st.end == null ? all.length - 1 : Math.max(count - 1, Math.min(all.length - 1, st.end));
+    const start = endIdx - count + 1;
+    const vis = all.slice(start, endIdx + 1);
+
+    let lo = d3.min(vis, (d) => d.low), hi = d3.max(vis, (d) => d.high);
+    const cost = h.shares > 0 && h.avg_cost ? h.avg_cost : null;
+    if (cost) { lo = Math.min(lo, cost); hi = Math.max(hi, cost); }
+    mas.forEach((arr) => arr.slice(start).forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }));
+    const pad = (hi - lo) * 0.1 || hi * 0.02;
+    const y = d3.scaleLinear([lo - pad, hi + pad], [PH, 0]).nice();
+    const yt = y.ticks(narrow ? 4 : 6);
+    const pf = d3.format(",." + Math.max(0, d3.precisionFixed(yt.length > 1 ? yt[1] - yt[0] : 1)) + "f");
+
+    const svg = d3.select(box).append("svg").attr("width", "100%").attr("viewBox", `0 0 ${W} ${HT}`)
+      .attr("role", "img").attr("aria-label", h.symbol + " 日 K 线");
+    const probe = svg.append("text").attr("class", "kx-tick").text(pf(d3.max(yt)));
+    const RW = Math.ceil(probe.node().getComputedTextLength()) + 12;
+    probe.remove();
+    const L = 2, R = W - RW;
+    const x = d3.scaleBand(vis.map((d) => d.date), [L, R]).paddingInner(0.3).paddingOuter(0.2);
+    const bw = Math.max(1, x.bandwidth());
+    const cx = (d) => x(d.date) + bw / 2;
+    const col = (d) => (d.close >= d.open ? "var(--color-ok)" : "var(--color-bad)");
+
+    const g = svg.append("g");
+    g.append("g").selectAll("line").data(yt).join("line")
+      .attr("x1", L).attr("x2", R).attr("y1", (d) => y(d)).attr("y2", (d) => y(d)).style("stroke", "var(--cds-chart-grid)");
+    g.append("g").selectAll("text").data(yt).join("text").attr("class", "kx-tick")
+      .attr("x", R + 8).attr("y", (d) => y(d)).attr("dy", "0.32em").text(pf);
+    g.append("line").attr("x1", L).attr("x2", R).attr("y1", PH + GAP + VH).attr("y2", PH + GAP + VH).style("stroke", "var(--cds-chart-axis)");
+
+    // Volume.
+    const vy = d3.scaleLinear([0, d3.max(vis, (d) => d.volume) || 1], [PH + GAP + VH, PH + GAP]);
+    g.append("g").selectAll("rect").data(vis).join("rect")
+      .attr("x", (d) => x(d.date)).attr("width", bw).attr("y", (d) => vy(d.volume)).attr("height", (d) => vy(0) - vy(d.volume))
+      .style("fill", col).style("opacity", 0.4);
+    g.append("text").attr("class", "kx-tick").attr("x", R + 8).attr("y", PH + GAP + 9).text("成交量");
+
+    // Candles.
+    const cg = g.append("g");
+    cg.selectAll("line").data(vis).join("line")
+      .attr("x1", cx).attr("x2", cx).attr("y1", (d) => y(d.high)).attr("y2", (d) => y(d.low)).style("stroke", col).style("stroke-width", 1);
+    cg.selectAll("rect").data(vis).join("rect")
+      .attr("x", (d) => x(d.date)).attr("width", bw)
+      .attr("y", (d) => y(Math.max(d.open, d.close))).attr("height", (d) => Math.max(1, Math.abs(y(d.open) - y(d.close))))
+      .style("fill", col);
+
+    // Moving averages.
+    mas.forEach((arr, i) => {
+      const pts = vis.map((d, j) => [cx(d), arr[start + j]]).filter((p) => p[1] != null);
+      if (pts.length < 2) return;
+      g.append("path").attr("d", d3.line().x((p) => p[0]).y((p) => y(p[1]))(pts))
+        .style("fill", "none").style("stroke", dash.colors[i]).style("stroke-width", 1.5)
+        .style("stroke-linejoin", "round").style("stroke-linecap", "round");
+    });
+
+    // Average cost.
+    if (cost) {
+      const yy = y(cost);
+      g.append("line").attr("x1", L).attr("x2", R).attr("y1", yy).attr("y2", yy)
+        .style("stroke", "var(--cds-chart-reference)").style("stroke-dasharray", "5 4").style("stroke-width", 1.5);
+      g.append("text").attr("class", "kx-cost").attr("x", L + 4).attr("y", yy - 5).text("成本 " + money(cost, h.currency));
+    }
+
+    // Buy and sell points, placed on the first trading day on or after the trade date.
+    const dates = vis.map((d) => d.date);
+    trades.forEach((t) => {
+      const d = dates.find((v) => v >= String(t.date).slice(0, 10));
+      const bar = d && vis[dates.indexOf(d)];
+      if (!bar || String(t.date).slice(0, 10) < dates[0]) return;
+      const buy = t.side === "buy", X = cx(bar), s = 5;
+      const color = buy ? "var(--color-ok)" : "var(--color-bad)";
+      const Y = buy ? Math.min(y(bar.low) + 5, PH - 20) : Math.max(y(bar.high) - 5, 20);
+      g.append("path").attr("d", buy ? `M${X},${Y} l${-s},${s * 1.6} h${2 * s} z` : `M${X},${Y} l${-s},${-s * 1.6} h${2 * s} z`).style("fill", color);
+      g.append("text").attr("class", "kx-bs").attr("x", X).attr("y", buy ? Y + s * 1.6 + 11 : Y - s * 1.6 - 4)
+        .attr("text-anchor", "middle").style("fill", color).text(buy ? "B" : "S");
+    });
+
+    // Date labels.
+    const every = Math.max(1, Math.ceil(vis.length / (narrow ? 4 : 7)));
+    const ticks = vis.filter((d, i) => i % every === 0);
+    g.append("g").selectAll("text").data(ticks).join("text").attr("class", "kx-tick")
+      .attr("x", cx).attr("y", HT - 6).attr("text-anchor", "middle").text((d) => md(d.date));
+
+    // Crosshair; the chart box's pointer handlers (set up once) read this layout.
+    const cross = g.append("line").attr("y1", 0).attr("y2", PH + GAP + VH)
+      .style("stroke", "var(--cds-chart-axis)").style("stroke-dasharray", "3 3").style("opacity", 0);
+    lay = { W, all, vis, start, mas, trades, dates, cross, cx, step: x.step(), cx0: cx(vis[0]) };
+  }
+
+  function drawPie(box, rows) {
+    const S = Math.min(320, Math.max(200, Math.floor(box.clientWidth)));
+    const r = S / 2 - 4;
+    const svg = d3.select(box).insert("svg", ":first-child").attr("width", "100%").attr("viewBox", `0 0 ${S} ${S}`)
+      .attr("role", "img").attr("aria-label", "仓位占比");
+    const g = svg.append("g").attr("transform", `translate(${S / 2},${S / 2})`);
+    const arcs = d3.pie().value((d) => d.market_value_usd).sort(null).padAngle(rows.length > 1 ? 0.012 : 0)(rows);
+    const arc = d3.arc().innerRadius(r * 0.62).outerRadius(r - 3).cornerRadius(3);
+    const big = d3.arc().innerRadius(r * 0.62).outerRadius(r).cornerRadius(3);
+    const tip = box.querySelector(".kx-tip");
+    const paths = g.selectAll("path").data(arcs).join("path").attr("d", arc)
+      .style("fill", (d, i) => dash.colors[i % dash.colors.length]).style("cursor", "pointer");
+    const label = d3.arc().innerRadius(r * 0.8).outerRadius(r * 0.8);
+    g.selectAll("text").data(arcs.filter((a) => a.endAngle - a.startAngle > 0.35)).join("text")
+      .attr("transform", (a) => `translate(${label.centroid(a)})`).attr("text-anchor", "middle").attr("dy", "0.35em")
+      .attr("class", "kx-tick").style("fill", "var(--color-bg)").style("font-weight", 600).style("pointer-events", "none")
+      .text((a) => a.data.symbol);
+    const row = (k, v) => {
+      const x = document.createElement("div"); x.className = "kx-row";
+      const s1 = document.createElement("span"); s1.textContent = k;
+      const s2 = document.createElement("span"); s2.textContent = v;
+      x.append(s1, s2); return x;
+    };
+    const show = (ev, a) => {
+      paths.attr("d", (p) => (p === a ? big(p) : arc(p)));
+      const head = document.createElement("div"); head.className = "kx-td"; head.textContent = a.data.symbol + (a.data.name ? " · " + a.data.name : "");
+      tip.replaceChildren(head, row("市值", money(a.data.market_value_usd, "USD")), row("占比", d3.format(".1%")(a.data.weight)));
+      tip.hidden = false;
+      const [mx, my] = d3.pointer(ev, box);
+      const bw = box.clientWidth, tw = tip.offsetWidth;
+      tip.style.left = Math.max(0, Math.min(bw - tw, mx + 12)) + "px";
+      tip.style.top = Math.max(0, my - 10) + "px";
+    };
+    paths.on("pointermove pointerdown", show)
+      .on("pointerleave", () => { paths.attr("d", arc); tip.hidden = true; })
+      .on("click", (ev, a) => { st.sym = a.data.symbol; st.end = null; redraw(); root.querySelector("#kline").scrollIntoView({ block: "start", behavior: "smooth" }); });
+  }
+
+  // "?" help cards: one open at a time; a click elsewhere or Escape closes it.
+  const helps = [...document.querySelectorAll(".kx-help")];
+  helps.forEach((h) => h.addEventListener("toggle", () => { if (h.open) helps.forEach((o) => { if (o !== h) o.open = false; }); }));
+  document.addEventListener("click", (e) => helps.forEach((h) => { if (h.open && !h.contains(e.target)) h.open = false; }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const h = helps.find((x) => x.open);
+    if (h) { h.open = false; h.querySelector("summary").focus(); }
+  });
+
+  // Asks the server for fresh market data, then reloads the datasets.
+  document.getElementById("kxRefresh").addEventListener("click", async () => {
+    const btn = document.getElementById("kxRefresh"), msg = document.getElementById("kxRefreshMsg");
+    btn.disabled = true;
+    msg.hidden = false;
+    msg.textContent = "正在从腾讯财经、新浪财经取最新数据…";
+    try {
+      const r = await window.kxRefresh();
+      const errs = Object.keys(r.errors || {});
+      msg.textContent = "已更新 " + Object.keys(r.updated || {}).length + " 只股票的价格和日 K 线" + (errs.length ? "；没取到：" + errs.join("、") : "") + "。";
+    } catch (e) {
+      msg.textContent = "刷新没成功，过一会儿再试，或重新打开这个页面。";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  dash.onData(() => render({
+    weights: dash.data("weights"),
+    totals: dash.data("totals"), holdings: dash.data("holdings"),
+    candles: dash.data("candles"), trades: dash.data("trades"),
+  }));
+})();
+</script>
+
+<script>
+(() => {
+  const H = { "Content-Type": "application/json", "X-Requested-With": "ledger" };
+  async function api(method, url) {
+    const r = await fetch(url, { method, headers: H, credentials: "same-origin" });
+    if (r.status === 401) { location.href = "/"; throw new Error("请先登录"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    return j;
+  }
+  async function load() {
+    const [c, t, cfg] = await Promise.all([api("GET", "/api/c/candles"), api("GET", "/api/c/trades"), api("GET", "/api/d/config/main")]);
+    const conf = cfg.data || {}, quotes = conf.quotes || {};
+    const candles = [];
+    for (const d of c.docs) {
+      const x = d.data || {}, name = x.name || (quotes[x.symbol] || {}).name || "";
+      for (const b of x.bars || []) candles.push({ symbol: x.symbol, date: b[0], open: b[1], high: b[2], low: b[3], close: b[4], volume: b[5], currency: x.currency, name });
+    }
+    const trades = t.docs.map((d) => {
+      const x = d.data || {};
+      return { date: x.date, side: x.side, symbol: x.symbol, shares: Number(x.shares) || 0, price: Number(x.price) || 0, fees: Number(x.fees) || 0,
+        currency: x.currency || (/^\d+$/.test(x.symbol) ? "HKD" : "USD"), created_at: x.createdAt || "" };
+    });
+    const fx = [{ pair: "USDHKD", rate: Number(conf.fx) || 7.8 }];
+    dash._set({ candles, trades, fx });
+    await Promise.all(WATCH.map(async (w) => {
+      try { w.bars = ((await api("GET", "/api/d/watch/" + w.doc)).data || {}).bars || []; } catch (e) { w.bars = []; }
+      renderWatch(w);
+    }));
+  }
+
+  // ---------- watch-only cards (gold, USD/CNY): not part of the holdings ----------
+  const OZ = 31.1035;
+  const nf = (v, d) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const sp = (v) => (v > 0.00004 ? "+" : v < -0.00004 ? "−" : "") + Math.abs(v * 100).toFixed(2) + "%";
+  const sd = (v, d) => (v > 0 ? "+" : v < 0 ? "−" : "") + nf(Math.abs(v), d);
+  const toneOf = (v) => (v > 0.00004 ? "kx-up" : v < -0.00004 ? "kx-dn" : "");
+  const monthsAgo = (n) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d.toISOString().slice(0, 10); };
+  const atOrBefore = (bars, date) => { let r = null; for (const b of bars) { if (b[0] <= date) r = b; else break; } return r; };
+  const extreme = (bars, i, cmp) => bars.reduce((m, b) => (cmp(b[i], m[i]) ? b : m), bars[0]);
+  const WATCH = [
+    { id: "gold", doc: "GC", months: 12, dp: 2, pre: "$", unit: "美元/盎司", color: "var(--s1)", empty: "还没有金价数据，点“刷新数据”获取。",
+      sub: (last) => "≈ $" + nf(last[4] / OZ, 2) + " / 克",
+      change: (c, prev) => sp(c / prev - 1),
+      stats(bars, c) {
+        const hi = extreme(bars, 2, (a, b) => a > b), y1 = bars.filter((b) => b[0] > monthsAgo(12));
+        const out = [["近 10 年最高", "$" + nf(hi[2], 2), hi[0]], ["离最高", sp(c / hi[2] - 1), null, c / hi[2] - 1],
+          ["52 周最高", "$" + nf(Math.max(...y1.map((b) => b[2])), 2)], ["52 周最低", "$" + nf(Math.min(...y1.map((b) => b[3])), 2)]];
+        for (const n of [1, 3, 5]) { const b = atOrBefore(bars, monthsAgo(n * 12)); if (b) out.push(["近 " + n + " 年", sp(c / b[4] - 1), null, c / b[4] - 1]); }
+        return out;
+      },
+      tip: (b) => [["收盘", "$" + nf(b[4], 2)], ["最高 / 最低", "$" + nf(b[2], 2) + " / $" + nf(b[3], 2)]] },
+    { id: "usdcny", doc: "USDCNY", months: 12, dp: 4, pre: "", unit: "人民币 / 1 美元", color: "var(--s0)", empty: "还没有汇率数据，点“刷新数据”获取。",
+      sub: (last) => "今日 开 " + nf(last[1], 4) + " · 高 " + nf(last[2], 4) + " · 低 " + nf(last[3], 4) + " · 振幅 " + nf(last[2] - last[3], 4),
+      change: (c, prev) => sd(c - prev, 4) + "（" + sp(c / prev - 1) + "）",
+      stats(bars, c) {
+        const y1 = bars.filter((b) => b[0] > monthsAgo(12)), y10 = bars.filter((b) => b[0] > monthsAgo(120));
+        const h1 = extreme(y1, 2, (a, b) => a > b), l1 = extreme(y1, 3, (a, b) => a < b), h10 = extreme(y10, 2, (a, b) => a > b), l10 = extreme(y10, 3, (a, b) => a < b);
+        const out = [["52 周最高", nf(h1[2], 4), h1[0]], ["52 周最低", nf(l1[3], 4), l1[0]], ["近 10 年最高", nf(h10[2], 4), h10[0]], ["近 10 年最低", nf(l10[3], 4), l10[0]]];
+        for (const n of [1, 5]) { const b = atOrBefore(bars, monthsAgo(n * 12)); if (b) out.push(["近 " + n + " 年", sd(c - b[4], 4) + "（" + sp(c / b[4] - 1) + "）", null, c - b[4]]); }
+        return out;
+      },
+      tip: (b) => [["开盘", nf(b[1], 4)], ["最高", nf(b[2], 4)], ["最低", nf(b[3], 4)], ["收盘", nf(b[4], 4)]] },
+  ];
+  function renderWatch(w) {
+    const root = document.getElementById(w.id), box = root.querySelector(".kx-w-chart"), tip = box.querySelector(".kx-tip");
+    root.querySelectorAll("[data-months]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.months) === w.months)));
+    box.querySelectorAll("svg").forEach((n) => n.remove());
+    tip.hidden = true;
+    w.lay = null;
+    const bars = w.bars || [], px = root.querySelector(".kx-w-px"), chg = root.querySelector(".kx-w-chg"), sub = root.querySelector(".kx-w-sub");
+    if (!bars.length) { px.textContent = "—"; chg.textContent = ""; root.querySelector(".kx-w-stats").replaceChildren(); sub.textContent = w.empty; return; }
+    const last = bars[bars.length - 1], prev = bars[bars.length - 2], c = last[4];
+    px.textContent = w.pre + nf(c, w.dp);
+    chg.textContent = " " + w.unit + " · " + last[0] + (prev ? " · 较前一日 " + w.change(c, prev[4]) : "");
+    chg.className = "kx-w-chg kx-sym-name " + (prev ? toneOf(c - prev[4]) : "");
+    sub.textContent = w.sub(last);
+    root.querySelector(".kx-w-stats").replaceChildren(...w.stats(bars, c).map(([k, v, note, sign]) => {
+      const div = document.createElement("div"), dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = k; dd.textContent = v + (note ? "（" + note + "）" : "");
+      if (sign != null) dd.className = toneOf(sign);
+      div.append(dt, dd); return div;
+    }));
+    const vis = w.months ? bars.filter((b) => b[0] > monthsAgo(w.months)) : bars;
+    if (vis.length < 2) return;
+    const W = Math.max(280, Math.floor(box.clientWidth)), narrow = W < 560, PH = narrow ? 200 : 240, HT = PH + 22;
+    const y = d3.scaleLinear([d3.min(vis, (b) => b[4]), d3.max(vis, (b) => b[4])], [PH - 4, 8]).nice();
+    const yt = y.ticks(narrow ? 4 : 6), fmt = d3.format((w.dp > 2 ? "." : ",.") + Math.max(w.dp > 2 ? 2 : 0, d3.precisionFixed(yt.length > 1 ? yt[1] - yt[0] : 1)) + "f");
+    const svg = d3.select(box).insert("svg", ".kx-tip").attr("width", "100%").attr("viewBox", "0 0 " + W + " " + HT).attr("role", "img").attr("aria-label", root.querySelector("h2").textContent + "走势");
+    const probe = svg.append("text").attr("class", "kx-tick").text(fmt(d3.max(yt)));
+    const RW = Math.ceil(probe.node().getComputedTextLength()) + 12;
+    probe.remove();
+    const L = 2, R = W - RW, x = d3.scaleLinear([0, vis.length - 1], [L, R]);
+    svg.append("g").selectAll("line").data(yt).join("line").attr("x1", L).attr("x2", R).attr("y1", (v) => y(v)).attr("y2", (v) => y(v)).style("stroke", "var(--cds-chart-grid)");
+    svg.append("g").selectAll("text").data(yt).join("text").attr("class", "kx-tick").attr("x", R + 8).attr("y", (v) => y(v)).attr("dy", "0.32em").text(fmt);
+    svg.append("path").attr("d", d3.area().x((b, i) => x(i)).y0(PH).y1((b) => y(b[4]))(vis)).style("fill", w.color).style("opacity", 0.12);
+    svg.append("path").attr("d", d3.line().x((b, i) => x(i)).y((b) => y(b[4]))(vis)).style("fill", "none").style("stroke", w.color).style("stroke-width", 1.8).style("stroke-linejoin", "round");
+    const every = Math.max(1, Math.ceil(vis.length / (narrow ? 4 : 6))), long = vis.length > 300;
+    const lab = (d) => (long ? d.slice(0, 7).replace("-", "/") : Number(d.slice(5, 7)) + "/" + Number(d.slice(8, 10)));
+    svg.append("g").selectAll("text").data(vis.map((b, i) => [b, i]).filter(([, i]) => i % every === 0)).join("text").attr("class", "kx-tick")
+      .attr("x", ([, i]) => x(i)).attr("y", HT - 6).attr("text-anchor", ([, i]) => (i === 0 ? "start" : "middle")).text(([b]) => lab(b[0]));
+    const cross = svg.append("line").attr("y1", 0).attr("y2", PH).style("stroke", "var(--cds-chart-axis)").style("stroke-dasharray", "3 3").style("opacity", 0);
+    const dot = svg.append("circle").attr("r", 4).style("fill", w.color).style("opacity", 0);
+    w.lay = { vis, x, y, W, cross, dot };
+  }
+  function watchTip(w, clientX) {
+    const L = w.lay; if (!L) return;
+    const root = document.getElementById(w.id), box = root.querySelector(".kx-w-chart"), tip = box.querySelector(".kx-tip");
+    const r = box.getBoundingClientRect(), mx = ((clientX - r.left) * L.W) / r.width;
+    const i = Math.max(0, Math.min(L.vis.length - 1, Math.round(L.x.invert(mx)))), b = L.vis[i];
+    L.cross.attr("x1", L.x(i)).attr("x2", L.x(i)).style("opacity", 1);
+    L.dot.attr("cx", L.x(i)).attr("cy", L.y(b[4])).style("opacity", 1);
+    const row = ([k, v]) => { const e = document.createElement("div"); e.className = "kx-row"; const a = document.createElement("span"); a.textContent = k; const c = document.createElement("span"); c.textContent = v; e.append(a, c); return e; };
+    const head = document.createElement("div"); head.className = "kx-td"; head.textContent = b[0];
+    tip.replaceChildren(head, ...w.tip(b).map(row));
+    tip.hidden = false;
+    const bw = box.clientWidth, tw = tip.offsetWidth, p = (L.x(i) / L.W) * bw;
+    tip.style.left = Math.max(0, Math.min(bw - tw, p > bw / 2 ? p - tw - 12 : p + 12)) + "px";
+  }
+  for (const w of WATCH) {
+    const root = document.getElementById(w.id), box = root.querySelector(".kx-w-chart");
+    box.addEventListener("pointermove", (e) => watchTip(w, e.clientX));
+    box.addEventListener("pointerdown", (e) => watchTip(w, e.clientX));
+    box.addEventListener("pointerleave", () => { box.querySelector(".kx-tip").hidden = true; if (w.lay) { w.lay.cross.style("opacity", 0); w.lay.dot.style("opacity", 0); } });
+    root.querySelectorAll("[data-months]").forEach((b) => b.addEventListener("click", () => { w.months = Number(b.dataset.months); renderWatch(w); }));
+  }
+
+  window.kxRefresh = async () => { const r = await api("POST", "/api/refresh"); await load(); return r; };
+  load().catch(() => dash._fail());
+  let rt = null;
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { dash._redraw(); WATCH.forEach(renderWatch); }, 150); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load().catch(() => {}); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "trades": {
+    "demo-1": { "date": "2026-07-06", "side": "buy", "symbol": "VOO", "market": "US", "currency": "USD", "shares": 2, "price": 690.6, "fees": 0, "note": "示例数据", "createdAt": "2026-07-06T14:00:00.000Z" },
+    "demo-2": { "date": "2026-07-20", "side": "buy", "symbol": "QQQM", "market": "US", "currency": "USD", "shares": 3, "price": 286.6, "fees": 0, "note": "示例数据", "createdAt": "2026-07-20T14:00:00.000Z" },
+    "demo-3": { "date": "2026-07-06", "side": "buy", "symbol": "0700", "market": "HK", "currency": "HKD", "shares": 100, "price": 452, "fees": 50.2, "note": "示例数据", "createdAt": "2026-07-06T03:00:00.000Z" },
+    "demo-4": { "date": "2026-09-01", "side": "buy", "symbol": "VOO", "market": "US", "currency": "USD", "shares": 1, "price": 700.3, "fees": 0, "note": "示例数据", "createdAt": "2026-09-01T14:00:00.000Z" },
+    "demo-5": { "date": "2026-09-22", "side": "sell", "symbol": "QQQM", "market": "US", "currency": "USD", "shares": 1, "price": 307.8, "fees": 0.01, "note": "示例数据", "createdAt": "2026-09-22T14:00:00.000Z" }
+  },
+  "fixed": {
+    "demo-bond": { "kind": "bond", "name": "美国国债 4.00% 2030/2/15", "isin": "", "currency": "USD", "face": 1000, "price": 99.5, "coupon": 4, "freq": 2, "tradeDate": "2026-08-03", "settle": "2026-08-04", "maturity": "2030-02-15", "accruedPaid": 18.78, "note": "示例数据", "createdAt": "2026-08-03T03:00:00.000Z" },
+    "demo-deposit": { "kind": "deposit", "name": "美元定期 6 个月", "currency": "USD", "principal": 2000, "rate": 3.5, "start": "2026-08-01", "maturity": "2027-02-01", "interest": 35.78, "autoRenew": false, "note": "示例数据", "createdAt": "2026-08-01T03:00:00.000Z" }
+  }
+}

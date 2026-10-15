@@ -1,0 +1,20 @@
+[Unit]
+Description=Stock ledger
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=stockledger
+Group=stockledger
+WorkingDirectory=/opt/stock-ledger
+ExecStart=/usr/bin/python3 /opt/stock-ledger/app.py serve --host 127.0.0.1 --port 5090
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/stock-ledger/data
+
+[Install]
+WantedBy=multi-user.target

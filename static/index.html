@@ -1,0 +1,1849 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<style>*, *::before, *::after { box-sizing: border-box; } body { margin: 0; }</style>
+</head>
+<body>
+<title>美股持仓账本</title>
+<style>
+/* Layout: a passbook ledger in one 920px column: asset mix, profit trend, holdings, Treasuries and deposits, entry form, trade log */
+:root {
+  --bg: #EDF0F3;
+  --surface: #FFFFFF;
+  --ink: #16202A;
+  --muted: #5D6A77;
+  --line: #D3DAE1;
+  --accent: #2B5784;
+  --accent-soft: #E2EAF3;
+  --on-accent: #FFFFFF;
+  --up: #1C7F4F;
+  --down: #C2362B;
+  --warn: #9A6400;
+  --c-stk: #2B5784;
+  --c-bond: #7A5CA8;
+  --c-dep: #A8742A;
+  --f-display: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --f-num: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540;
+    --accent: #82ABDA; --accent-soft: #1E2D3F; --on-accent: #0E1620;
+    --up: #4DC28A; --down: #F0695D; --warn: #E0A84A;
+    --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540;
+  --accent: #82ABDA; --accent-soft: #1E2D3F; --on-accent: #0E1620;
+  --up: #4DC28A; --down: #F0695D; --warn: #E0A84A;
+  --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 920px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 56px; display: grid; gap: 36px; }
+section { display: grid; gap: 14px; min-width: 0; }
+
+.eyebrow { margin: 0; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+h1 { margin: 4px 0 6px; font-family: var(--f-display); font-weight: 600; font-size: 32px; line-height: 1.25; text-wrap: balance; }
+h2 { margin: 0; font-family: var(--f-display); font-weight: 600; font-size: 20px; text-wrap: balance; }
+.head-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.hint { margin: 0; font-size: 13px; color: var(--muted); max-width: 65ch; }
+.navlink { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--accent); font-size: 13px; font-weight: 500; text-decoration: none; }
+.navlink:hover { border-color: var(--accent); }
+.navlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.navrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.navrow .navlink { margin-top: 0; }
+button.navlink { font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+button.navlink:disabled { opacity: .6; cursor: default; }
+.navlink.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* Entry dialog */
+#entry { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .25); }
+#entry[open] { display: grid; gap: 14px; }
+#entry::backdrop { background: rgba(15, 20, 30, .45); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dlg-x { font: inherit; font-size: 16px; line-height: 1; width: 36px; height: 36px; flex: none; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
+.dlg-x:hover { color: var(--ink); border-color: var(--muted); }
+/* "?" help: a small round button beside a heading; its text opens as a card below the heading */
+.title { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.help > summary { list-style: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: 600 12px/1 var(--f-body); cursor: pointer; user-select: none; }
+.help > summary::-webkit-details-marker { display: none; }
+.help > summary:hover, .help[open] > summary { color: var(--accent); border-color: var(--accent); }
+.help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.help-body { box-sizing: border-box; position: absolute; left: 0; top: calc(100% + 8px); z-index: 10; width: min(560px, calc(100vw - 32px)); padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); font-family: var(--f-body); font-size: 13px; font-weight: 400; line-height: 1.65; color: var(--ink); }
+.help:not([open]) .help-body { display: none; }
+.help-body p { margin: 0 0 6px; }
+.help-body p:last-child { margin: 0; }
+.status { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.status[data-kind="ok"] { color: var(--accent); }
+.status[data-kind="err"] { color: var(--warn); }
+
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--muted); }
+
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+#holdings { min-width: 860px; }
+#log { min-width: 760px; }
+.logbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.logbar .seg label { padding: 5px 14px; font-size: 13px; }
+.logsym { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.logsym select { padding: 5px 8px; font-size: 13px; }
+#log tr.mon td { background: var(--bg); color: var(--muted); font-size: 12px; padding: 6px 12px; white-space: normal; }
+#log tr.mon b { color: var(--ink); font-weight: 600; margin-right: 8px; }
+#log .meta { display: none; }
+#fixed { min-width: 940px; }
+.mixbox { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 18px 24px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.donut { position: relative; width: 100%; max-width: 340px; margin-inline: auto; }
+.donut .lbl { font-size: 11px; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.donut .lbl .n { font-weight: 600; }
+.donut .lead { stroke: var(--muted); stroke-width: 1; fill: none; }
+.donut svg { display: block; width: 100%; height: auto; overflow: visible; }
+.donut path { cursor: pointer; transition: opacity .15s; }
+.donut .ctr { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.donut .ctr .k { font-size: 12px; color: var(--muted); }
+.donut .ctr .v { font-size: 20px; font-weight: 600; }
+.donut .ctr .s { font-size: 11px; color: var(--muted); }
+#mix { font-size: 14px; }
+#mix td, #mix th { padding: 8px 6px; white-space: normal; }
+#mix tbody tr { cursor: default; }
+#mix tbody tr.hot td { background: var(--accent-soft); }
+#mix .sw { margin-right: 8px; }
+#mix .nm { display: block; font-size: 12px; color: var(--muted); }
+#mix tfoot td { border-top: 1px solid var(--line); border-bottom: 0; font-weight: 600; }
+@media (max-width: 680px) { .mixbox { grid-template-columns: minmax(0, 1fr); } }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: 0; }
+.sw.stk { background: var(--c-stk); }
+.sw.bond { background: var(--c-bond); }
+.sw.dep { background: var(--c-dep); }
+td.fname { white-space: normal; min-width: 170px; font-weight: 500; }
+td.fname .nm { display: block; font-weight: 400; font-size: 12px; color: var(--muted); font-family: var(--f-num); }
+#fixForm fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+#fixForm fieldset[hidden], form[hidden] { display: none; }
+.seg input:checked + label:not(.b):not(.s) { background: var(--accent-soft); color: var(--accent); }
+#fixMsg[data-kind="ok"] { color: var(--accent); }
+#fixMsg[data-kind="err"] { color: var(--warn); }
+th { font-weight: 500; font-size: 12px; letter-spacing: .04em; color: var(--muted); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+th.num, td.num { text-align: right; }
+th.num { font-family: var(--f-body); }
+td.sym { font-family: var(--f-num); font-weight: 500; }
+td.sym .nm { display: block; font-family: var(--f-body); font-weight: 400; font-size: 12px; color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.mk { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-family: var(--f-body); font-size: 11px; font-weight: 500; color: var(--accent); background: var(--accent-soft); vertical-align: 1px; }
+td.note { white-space: normal; min-width: 140px; color: var(--muted); font-size: 13px; }
+td small { font-size: 12px; }
+.empty { text-align: center; color: var(--muted); padding: 28px 16px; white-space: normal; }
+tr.closed td { color: var(--muted); }
+
+input, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; min-width: 0; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:disabled { opacity: .6; }
+input.px { width: 104px; text-align: right; font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.cap { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); font-family: var(--f-body); }
+
+.warn { margin: 0; font-size: 13px; color: var(--warn); }
+
+/* Profit trend */
+.pnl-total { font-family: var(--f-num); font-size: 18px; font-weight: 500; }
+.pnl-chart { position: relative; min-height: 236px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 12px 8px 4px; }
+.pnl-chart svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+.pnl-chart .empty { margin: 0; padding: 80px 16px; }
+.pnl-tick { font-size: 11px; fill: var(--muted); font-family: var(--f-num); }
+.pnl-tip { position: absolute; top: 10px; z-index: 2; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .14); padding: 6px 10px; font-size: 12px; font-family: var(--f-num); min-width: 160px; }
+.pnl-tip .d { color: var(--muted); margin-bottom: 2px; }
+.pnl-tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.pnl-tip .r span:first-child { color: var(--muted); font-family: var(--f-body); }
+.pnl-tip { min-width: 200px; }
+.pnl-tip hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+.pnl-tip .r i { font-style: normal; color: var(--muted); font-size: 11px; margin-left: 4px; font-family: var(--f-num); }
+.pnl-tip .t { font-family: var(--f-body); }
+.pnl-sub { display: block; text-align: right; font-size: 13px; font-family: var(--f-num); }
+.pnl-bar { display: flex; justify-content: flex-end; }
+.pnl-mode { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.pnl-mode button { font: inherit; font-size: 13px; padding: 5px 14px; border: 0; background: var(--surface); color: var(--muted); cursor: pointer; }
+.pnl-mode button + button { border-left: 1px solid var(--line); }
+.pnl-mode button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.pnl-chart svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.pnl-mark { font-size: 9px; font-weight: 600; fill: var(--surface); font-family: var(--f-num); }
+.pnl-note { font-size: 10.5px; font-family: var(--f-num); }
+.pnl-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pnl-stats div { background: var(--surface); padding: 10px 14px; min-width: 0; }
+.pnl-stats dt { font-size: 12px; color: var(--muted); }
+.pnl-stats dd { margin: 2px 0 0; font-family: var(--f-num); font-size: 15px; font-weight: 500; }
+.pnl-stats dd small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* Entry form */
+form { display: grid; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.field > label, .field > .lbl { font-size: 13px; color: var(--muted); }
+.field.wide { grid-column: 1 / -1; }
+.field .sub { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+.combo { position: relative; display: grid; }
+.suggest { position: absolute; z-index: 5; top: 100%; left: 0; width: max(100%, 230px); margin: 4px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); max-height: 320px; overflow-y: auto; }
+.suggest li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.suggest li .c { font-family: var(--f-num); font-weight: 500; }
+.suggest li .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest li .e { grid-column: 2; font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest li.custom .n { color: var(--accent); }
+.suggest li[aria-selected="true"], .suggest li:hover { background: var(--accent-soft); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: max-content; }
+.seg input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.seg label { padding: 7px 16px; cursor: pointer; color: var(--muted); }
+.seg label + input + label { border-left: 1px solid var(--line); }
+.seg input:checked + label.b { background: var(--up); color: #FFFFFF; }
+.seg input:checked + label.s { background: var(--down); color: #FFFFFF; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+.form-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.btn { font: inherit; font-weight: 500; border-radius: 8px; padding: 9px 20px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.btn:disabled { opacity: .55; cursor: default; }
+#formMsg { margin: 0; font-size: 13px; color: var(--muted); }
+#formMsg[data-kind="ok"] { color: var(--accent); }
+#formMsg[data-kind="err"] { color: var(--warn); }
+
+.chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; border: 1px solid currentColor; }
+.chip.buy { color: var(--up); }
+.chip.sell { color: var(--down); }
+.acts { display: flex; gap: 6px; justify-content: flex-end; }
+.mini { font: inherit; font-size: 12px; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; color: var(--muted); cursor: pointer; }
+.mini.danger { border-color: var(--warn); color: var(--warn); }
+
+footer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; max-width: 70ch; }
+footer p { margin: 0 0 6px; }
+
+@media (max-width: 680px) {
+  h1 { font-size: 26px; }
+  .pnl-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pnl-sub { text-align: left; }
+  /* Trade log as cards: symbol and amount, then date, shares and price, then note and actions */
+  #mix thead th:nth-child(2), #mix tbody td:nth-child(2) { display: none; }
+  #log { min-width: 0; }
+  #log thead { display: none; }
+  #log tbody tr:not(.mon) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "sym amt" "meta meta" "note acts"; gap: 4px 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  #log tbody tr:last-child { border-bottom: 0; }
+  #log tbody td { border: 0; padding: 0; white-space: normal; text-align: left; }
+  #log td.c-date, #log td.c-side, #log td.c-qty, #log td.c-px, #log td.c-fee { display: none; }
+  #log td.sym { grid-area: sym; }
+  #log td.c-amt { grid-area: amt; text-align: right; }
+  #log td.meta { display: block; grid-area: meta; font-size: 12px; color: var(--muted); }
+  #log td.note { grid-area: note; min-width: 0; }
+  #log td.c-act { grid-area: acts; align-self: end; }
+  #log tr.mon { display: block; }
+  #log tr.mon td { display: block; }
+  /* Holdings as cards: symbol and unrealized P&L, then shares and average cost, then price and market value */
+  #holdings { min-width: 0; }
+  #holdings thead { display: none; }
+  #holdings tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "sym pnl" "qty avg" "px mv" "day real"; gap: 10px 12px; padding: 12px; border-bottom: 1px solid var(--line); }
+  #holdings tbody tr:last-child { border-bottom: 0; }
+  #holdings tbody td { border: 0; padding: 0; white-space: normal; text-align: left; }
+  #holdings td.sym { grid-area: sym; }
+  #holdings tr:not(.closed) td:nth-child(2) { grid-area: qty; }
+  #holdings tr:not(.closed) td:nth-child(3) { grid-area: avg; }
+  #holdings tr:not(.closed) td:nth-child(4) { grid-area: px; }
+  #holdings tr:not(.closed) td:nth-child(5) { grid-area: day; }
+  #holdings tr:not(.closed) td:nth-child(6) { grid-area: mv; }
+  #holdings tr:not(.closed) td:nth-child(7) { grid-area: pnl; text-align: right; font-weight: 500; }
+  #holdings tr:not(.closed) td:nth-child(8) { grid-area: real; }
+  #holdings tr:not(.closed) td:nth-child(2)::before { content: "持有股数"; }
+  #holdings tr:not(.closed) td:nth-child(3)::before { content: "平均成本"; }
+  #holdings tr:not(.closed) td:nth-child(4)::before { content: "现价"; }
+  #holdings tr:not(.closed) td:nth-child(5)::before { content: "当日涨跌"; }
+  #holdings tr:not(.closed) td:nth-child(6)::before { content: "市值"; }
+  #holdings tr:not(.closed) td:nth-child(8)::before { content: "已实现盈亏"; }
+  #holdings tr.closed { grid-template-areas: "sym pnl"; }
+  #holdings tr.closed td:nth-child(2) { display: none; }
+  #holdings tr.closed td:nth-child(3) { grid-area: pnl; text-align: right; }
+  /* Treasuries and deposits as cards */
+  #fixed { min-width: 0; }
+  #fixed thead { display: none; }
+  #fixed tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "amt rate" "inc total" "val mark" "term acts"; gap: 10px 12px; padding: 12px; border-bottom: 1px solid var(--line); }
+  #fixed tbody tr:last-child { border-bottom: 0; }
+  #fixed tbody td { border: 0; padding: 0; white-space: normal; text-align: left; min-width: 0; }
+  #fixed td:nth-child(1) { grid-area: name; }
+  #fixed td:nth-child(2) { grid-area: amt; }
+  #fixed td:nth-child(3) { grid-area: term; }
+  #fixed td:nth-child(4) { grid-area: rate; }
+  #fixed td:nth-child(5) { grid-area: inc; }
+  #fixed td:nth-child(6) { grid-area: val; }
+  #fixed td:nth-child(7) { grid-area: mark; }
+  #fixed td:nth-child(8) { grid-area: total; }
+  #fixed td:nth-child(9) { grid-area: acts; align-self: end; }
+  #fixed td:nth-child(7):not(:has(input)) { display: none; }
+  #fixed td:nth-child(2)::before { content: "本金或面值"; }
+  #fixed td:nth-child(3)::before { content: "期限"; }
+  #fixed td:nth-child(4)::before { content: "利率"; }
+  #fixed td:nth-child(5)::before { content: "已计收益"; }
+  #fixed td:nth-child(6)::before { content: "当前价值"; }
+  #fixed td:nth-child(7)::before { content: "参考卖出价（%）"; }
+  #fixed td:nth-child(8)::before { content: "到期总收益"; }
+  #holdings td::before, #fixed td::before { display: block; margin-bottom: 2px; font-family: var(--f-body); font-size: 12px; font-weight: 400; color: var(--muted); }
+  #holdings td.empty, #fixed td.empty, #log td.empty { grid-column: 1 / -1; text-align: center; padding: 20px 4px; }
+  #holdings td.empty::before, #fixed td.empty::before { content: none; }
+  /* iPhone zooms the page when an input under 16px gets focus */
+  input, select, .logsym select { font-size: 16px; }
+  .mini { padding: 6px 12px; font-size: 13px; }
+  .navrow .navlink { flex: 1 1 auto; justify-content: center; padding: 8px 12px; }
+  .mixbox { padding: 12px; }
+  form { padding: 14px; }
+  .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .nav-x { display: none; }
+  #entry { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">美股和港股 · 国债 · 定期存款 · 移动平均成本</p>
+    <div class="title"><h1>美股持仓账本</h1><details class="help"><summary aria-label="这个页面怎么用">?</summary><div class="help-body"><p>每一笔买卖记在这里，持仓成本和盈亏自动算好。</p><p>默认以美元记账（港股成交按港元记，再折成美元）。绿涨红跌。</p><p>点“刷新数据”会从腾讯财经和新浪财经取最新价格、收盘价和汇率，几秒完成。</p></div></details></div>
+    <div class="navrow">
+      <button class="navlink primary" type="button" id="entryBtn">＋ 记一笔</button>
+      <button class="navlink" type="button" id="refreshBtn">↻ 刷新数据</button>
+      <a class="navlink" href="/dashboard">打开股票看板<span class="nav-x">（K 线、金价）</span>→</a>
+      <a class="navlink" href="/reading">读书清单</a>
+      <button class="navlink" type="button" id="logoutBtn">退出登录</button>
+    </div>
+    <p class="status" id="status">正在读取记录…</p>
+  </header>
+
+  <section aria-labelledby="mix-h">
+    <div class="head-row">
+      <div class="title"><h2 id="mix-h">资产占比</h2><details class="help"><summary aria-label="资产占比怎么算">?</summary><div class="help-body"><p>按总资产计算：每只股票、每笔国债和定期存款各占总资产的多少。股票按持仓表的现价，国债按持有到期的价值（含应计利息），定存按本金加已计利息，港股按当前汇率折成美元。</p><p>已到期的国债和定存已经回到储蓄账户，不再计入。账户里的活期现金没有记录，也不计入。</p><p>同一类用同一种颜色：蓝色是股票，紫色是国债，棕色是定期存款。表格最后一行是各类合计。</p></div></details></div>
+      <p class="hint" id="mixSum"></p>
+    </div>
+    <div class="mixbox">
+      <div class="donut" id="mixChart">
+        <div class="ctr"><span class="k">总资产</span><span class="v" id="mixTotal">—</span></div>
+        <div class="pnl-tip" id="mixTip" hidden></div>
+      </div>
+      <table id="mix">
+        <thead><tr><th>名称</th><th>类别</th><th class="num">金额</th><th class="num">占比</th></tr></thead>
+        <tbody><tr><td colspan="4" class="empty">正在读取…</td></tr></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="pnl-h">
+    <div class="head-row">
+      <div class="title"><h2 id="pnl-h">收益走势</h2><details class="help"><summary aria-label="收益走势说明">?</summary><div class="help-body"><p>累计收益 = 股票浮动盈亏 + 已实现盈亏 + 国债和定存已计收益，从第一笔买入或存款起按每天收盘价计算，单位美元（港股按当前汇率折算）。最后的“最新”点用今天的日期和持仓表里的现价，和总览对得上。</p><p>收益率 = 累计收益 ÷ 当天的投入成本（股票成本 + 国债买入成本 + 定存本金），加仓那天成本变大，收益率会跳低。</p><p>下方柱子是每天的盈亏变动，B / S 是买入和卖出。鼠标移动或点按查看当天明细，选中图表后可用方向键逐日查看。</p></div></details></div>
+      <p class="hint">累计收益 <span class="pnl-total" id="pnlTotal">—</span><span class="pnl-sub" id="pnlSub"></span></p>
+    </div>
+    <div class="pnl-bar">
+      <div class="pnl-mode" role="group" aria-label="纵轴显示"><button type="button" data-mode="usd" aria-pressed="true">金额</button><button type="button" data-mode="pct" aria-pressed="false">收益率</button></div>
+    </div>
+    <div class="pnl-chart" id="pnlChart">
+      <p class="empty" id="pnlEmpty">正在读取收盘价…</p>
+      <div class="pnl-tip" id="pnlTip" hidden></div>
+    </div>
+    <dl class="pnl-stats" id="pnlStats" hidden></dl>
+  </section>
+
+  <section aria-labelledby="hold-h">
+    <div class="head-row">
+      <div class="title"><h2 id="hold-h">持仓</h2><details class="help"><summary aria-label="现价说明">?</summary><div class="help-body"><p>点页面顶部的“刷新数据”更新现价和汇率。</p><p>交易时段取盘中价（可能有几分钟延迟，标“盘中”），其他时间取最近一个交易日的收盘价。你手动填的价格如果日期更新，不会被覆盖。</p><p>新加的股票可以先在表里手动填现价。</p></div></details></div>
+      <p class="hint" id="holdSum"></p>
+    </div>
+    <div class="table-wrap">
+      <table id="holdings">
+        <thead><tr><th>代码</th><th class="num">持有股数</th><th class="num">平均成本</th><th class="num">现价</th><th class="num">当日涨跌</th><th class="num">市值</th><th class="num">浮动盈亏</th><th class="num">已实现盈亏</th></tr></thead>
+        <tbody><tr><td colspan="8" class="empty">正在读取持仓…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="warn" id="warn" hidden></p>
+  </section>
+
+  <section aria-labelledby="fix-h">
+    <div class="head-row">
+      <div class="title"><h2 id="fix-h">国债和定期存款</h2><details class="help"><summary aria-label="国债和定存怎么算">?</summary><div class="help-body"><p>定期存款：到期利息按天数平摊，每天计入一点；到期后本金和利息回到储蓄账户，不再计入总资产，利息留在总收益里。</p><p>国债：按持有到期计算。每天累计票息，再把买入净价和面值的差额平摊到到期日；买入时付给卖方的应计利息会扣掉；票息到账后照样计入收益。</p><p>单只国债没有公开的实时价格。想按市价算，可以在“参考卖出价”里填券商或银行 App 上这只债券的卖出参考价（%），从填的那天起按这个价算；清空就恢复按持有到期算。</p><p>买入收益率按成交净价、票息和到期日算出，是持有到期、票息不再投资时的年化收益率。</p></div></details></div>
+      <p class="hint" id="fixSum"></p>
+    </div>
+    <div class="table-wrap">
+      <table id="fixed">
+        <thead><tr><th>名称</th><th class="num">本金或面值</th><th>期限</th><th class="num">利率</th><th class="num">已计收益</th><th class="num">当前价值</th><th class="num">参考卖出价</th><th class="num">到期总收益</th><th></th></tr></thead>
+        <tbody><tr><td colspan="9" class="empty">正在读取…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <dialog id="entry" aria-labelledby="entry-h">
+    <div class="dlg-head">
+      <h2 id="entry-h">记一笔</h2>
+      <button class="dlg-x" type="button" id="entryClose" aria-label="关闭">✕</button>
+    </div>
+    <div>
+      <div class="seg" role="radiogroup" aria-label="记录类型">
+        <input type="radio" name="ekind" id="ek-stk" value="stk" checked><label for="ek-stk">股票</label>
+        <input type="radio" name="ekind" id="ek-bond" value="bond"><label for="ek-bond">国债</label>
+        <input type="radio" name="ekind" id="ek-dep" value="deposit"><label for="ek-dep">定期存款</label>
+      </div>
+    </div>
+    <form id="tradeForm" novalidate>
+      <div class="fields">
+        <div class="field">
+          <label for="f-date">成交日期（按成交记录上的日期）</label>
+          <input id="f-date" type="date" required>
+        </div>
+        <div class="field">
+          <span class="lbl" id="side-lbl">方向</span>
+          <div class="seg" role="radiogroup" aria-labelledby="side-lbl">
+            <input type="radio" name="side" id="side-buy" value="buy" checked><label class="b" for="side-buy">买入</label>
+            <input type="radio" name="side" id="side-sell" value="sell"><label class="s" for="side-sell">卖出</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-sym">代码或名称</label>
+          <div class="combo">
+            <input id="f-sym" type="text" value="QQQM" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40"
+              role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="symBox" aria-describedby="f-sym-sub">
+            <ul id="symBox" class="suggest" role="listbox" aria-label="股票候选" hidden></ul>
+          </div>
+          <span class="sub" id="f-sym-sub">可搜代码、中文名或英文名。列表里没有的代码也能直接填。</span>
+        </div>
+        <div class="field">
+          <label for="f-qty">股数</label>
+          <input id="f-qty" type="number" inputmode="decimal" step="any" min="0" placeholder="1">
+        </div>
+        <div class="field">
+          <label for="f-price" id="f-price-lbl">成交价（美元）</label>
+          <input id="f-price" type="number" inputmode="decimal" step="any" min="0" placeholder="成交单上的价格">
+        </div>
+        <div class="field">
+          <label for="f-fee" id="f-fee-lbl">费用（美元）</label>
+          <input id="f-fee" type="number" inputmode="decimal" step="any" min="0" value="0">
+        </div>
+        <div class="field wide">
+          <label for="f-note">备注（可不填）</label>
+          <input id="f-note" type="text" maxlength="120" placeholder="例如：成交单编号">
+        </div>
+      </div>
+      <div class="form-foot">
+        <button class="btn" type="submit" id="saveBtn">保存这笔</button>
+        <p id="formMsg">美股佣金为 0 时费用填 0；港股买卖都有印花税等代收费，按成交单填。</p>
+      </div>
+    </form>
+    <form id="fixForm" novalidate hidden>
+      <div class="fields">
+        <div class="field wide">
+          <label for="x-name">名称</label>
+          <input id="x-name" type="text" maxlength="60" placeholder="例如：美元定期 12 个月">
+        </div>
+      </div>
+      <fieldset id="fs-dep" class="fields">
+        <div class="field"><label for="d-ccy">币种</label><select id="d-ccy"><option value="USD">美元</option><option value="HKD">港元</option></select></div>
+        <div class="field"><label for="d-amt">本金</label><input id="d-amt" type="number" inputmode="decimal" step="any" min="0"></div>
+        <div class="field"><label for="d-rate">年利率（%）</label><input id="d-rate" type="number" inputmode="decimal" step="any" min="0"></div>
+        <div class="field"><label for="d-start">存款日期</label><input id="d-start" type="date"></div>
+        <div class="field"><label for="d-end">到期日</label><input id="d-end" type="date"></div>
+        <div class="field"><label for="d-int">到期利息（可不填）</label><input id="d-int" type="number" inputmode="decimal" step="any" min="0" placeholder="不填就估算"><span class="sub">存款详情里的“利息”。不填时美元按 360 天、港元按 365 天估算。</span></div>
+      </fieldset>
+      <fieldset id="fs-bond" class="fields" hidden>
+        <div class="field"><label for="b-isin">产品编号（可不填）</label><input id="b-isin" type="text" maxlength="12" placeholder="US91282C…" autocapitalize="characters" spellcheck="false"></div>
+        <div class="field"><label for="b-face">面值（美元）</label><input id="b-face" type="number" inputmode="decimal" step="any" min="0"></div>
+        <div class="field"><label for="b-price">成交价格（%）</label><input id="b-price" type="number" inputmode="decimal" step="any" min="0" placeholder="例如 99.8829"></div>
+        <div class="field"><label for="b-cpn">票面利率（%）</label><input id="b-cpn" type="number" inputmode="decimal" step="any" min="0"></div>
+        <div class="field"><label for="b-trade">成交日期</label><input id="b-trade" type="date"><span class="sub">结算日按成交后一天算。</span></div>
+        <div class="field"><label for="b-end">到期日</label><input id="b-end" type="date"></div>
+        <div class="field"><label for="b-acc">买入时付的应计利息（可不填）</label><input id="b-acc" type="number" inputmode="decimal" step="any" min="0" placeholder="不填就按日期算"><span class="sub">交易详情里的“参考最高累计利息”。</span></div>
+      </fieldset>
+      <div class="fields"><div class="field wide"><label for="x-note">备注（可不填）</label><input id="x-note" type="text" maxlength="120" placeholder="例如：成交单编号、存款编号"></div></div>
+      <div class="form-foot">
+        <button class="btn" type="submit" id="fixSave">保存</button>
+        <p id="fixMsg" class="hint"></p>
+      </div>
+    </form>
+  </dialog>
+
+  <section aria-labelledby="log-h">
+    <div class="head-row">
+      <h2 id="log-h">交易记录</h2>
+      <p class="hint" id="logSum"></p>
+    </div>
+    <div class="logbar">
+      <div class="seg" role="radiogroup" aria-label="按方向筛选">
+        <input type="radio" name="lside" id="ls-all" value="all" checked><label for="ls-all">全部</label>
+        <input type="radio" name="lside" id="ls-buy" value="buy"><label for="ls-buy">买入</label>
+        <input type="radio" name="lside" id="ls-sell" value="sell"><label for="ls-sell">卖出</label>
+      </div>
+      <label class="logsym" for="logSym">代码 <select id="logSym"><option value="">全部</option></select></label>
+    </div>
+    <div class="table-wrap">
+      <table id="log">
+        <thead><tr><th>日期</th><th>方向</th><th>代码</th><th class="num">股数</th><th class="num">成交价</th><th class="num">金额</th><th class="num">费用</th><th>备注</th><th></th></tr></thead>
+        <tbody><tr><td colspan="9" class="empty">正在读取交易记录…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p>记录保存在你自己服务器的数据库里，登录后才能查看，每天自动备份。股价和收盘价来自腾讯财经，汇率来自新浪财经的公开数据，可能有几分钟延迟。</p>
+    <p>成本按移动平均法估算，港股金额折成美元时用当前汇率，费用按你填写的为准，实际数字以券商或银行的月结单和成交单据为准。A 股经沪深港通买卖对内地居民有限制，这里不支持。本页不构成投资建议。</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const H = { "Content-Type": "application/json", "X-Requested-With": "ledger" };
+  async function api(method, url, body) {
+    const r = await fetch(url, { method, headers: H, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+    if (r.status === 401) { location.reload(); throw Object.assign(new Error("请先登录"), { code: "unauthenticated" }); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(j.error || "HTTP " + r.status), { code: r.status === 400 ? "invalid_argument" : "unavailable" });
+    return j;
+  }
+  const collSnap = (docs) => ({ docs: docs.map((d) => ({ id: d.id, data: () => d.data })) });
+  const docSnap = (j) => ({ exists: !!j.exists, data: () => j.data });
+  const subs = [];
+  async function pull(s) {
+    try { const j = await api("GET", s.url); s.fn(s.kind === "c" ? collSnap(j.docs) : docSnap(j)); }
+    catch (e) { if (s.err) s.err(e); }
+  }
+  let version = null;
+  async function poll(force) {
+    try {
+      const v = (await api("GET", "/api/version")).version;
+      if (force || v !== version) { version = v; await Promise.all(subs.map(pull)); }
+    } catch (e) { /* the next poll retries */ }
+  }
+  setInterval(() => { if (!document.hidden) poll(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  const after = async (p) => { const r = await p; await poll(true); return r; };
+  const enc = encodeURIComponent;
+  const watch = (kind, url) => (fn, err) => { const s = { kind, url, fn, err }; subs.push(s); pull(s); return () => subs.splice(subs.indexOf(s), 1); };
+  const dbApi = {
+    collection: (c) => ({
+      onSnapshot: watch("c", "/api/c/" + enc(c)),
+      get: async () => collSnap((await api("GET", "/api/c/" + enc(c))).docs),
+      add: (data) => after(api("POST", "/api/c/" + enc(c), data)),
+    }),
+    doc(p) {
+      const [c, id] = p.split("/"), url = "/api/d/" + enc(c) + "/" + enc(id);
+      return {
+        onSnapshot: watch("d", url),
+        get: async () => docSnap(await api("GET", url)),
+        set: (data) => after(api("PUT", url, data)),
+        update: (data) => after(api("PATCH", url, data)),
+        delete: () => after(api("DELETE", url)),
+      };
+    },
+  };
+  window.ledgerApi = api;
+  window.claude = { use: async (n) => (n === "db" ? dbApi : n === "user" ? { canEdit: async () => true } : null) };
+})();
+</script>
+<script>
+(() => {
+  // Searchable ticker list: code|中文名|English name. US share classes use a dot (BRK.B); HK codes are 4 digits.
+  // Any valid code not listed here still works; this list only powers search by name.
+  const LIST = `QQQM|纳指100 ETF（低费率）|Invesco NASDAQ 100 ETF
+QQQ|纳指100 ETF|Invesco QQQ Trust
+VOO|标普500 ETF（先锋）|Vanguard S&P 500 ETF
+SPY|标普500 ETF（SPDR）|SPDR S&P 500 ETF
+IVV|标普500 ETF（安硕）|iShares Core S&P 500 ETF
+VTI|美国全市场 ETF|Vanguard Total Stock Market ETF
+VT|全球股票 ETF|Vanguard Total World Stock ETF
+VXUS|美国以外全球股票 ETF|Vanguard Total International Stock ETF
+VEA|发达市场 ETF|Vanguard FTSE Developed Markets ETF
+VWO|新兴市场 ETF|Vanguard FTSE Emerging Markets ETF
+SCHD|美国高股息 ETF|Schwab US Dividend Equity ETF
+SCHG|美国大盘成长 ETF|Schwab US Large-Cap Growth ETF
+VUG|成长股 ETF|Vanguard Growth ETF
+VGT|信息科技 ETF|Vanguard Information Technology ETF
+XLK|科技板块 ETF|Technology Select Sector SPDR
+SMH|半导体 ETF（VanEck）|VanEck Semiconductor ETF
+SOXX|半导体 ETF（安硕）|iShares Semiconductor ETF
+DIA|道琼斯指数 ETF|SPDR Dow Jones Industrial Average ETF
+IWM|罗素2000 小盘股 ETF|iShares Russell 2000 ETF
+TQQQ|三倍做多纳指100|ProShares UltraPro QQQ
+SQQQ|三倍做空纳指100|ProShares UltraPro Short QQQ
+SOXL|三倍做多半导体|Direxion Daily Semiconductor Bull 3X
+ARKK|方舟创新 ETF|ARK Innovation ETF
+JEPI|摩根大通股票溢价收益 ETF|JPMorgan Equity Premium Income ETF
+JEPQ|摩根大通纳指溢价收益 ETF|JPMorgan Nasdaq Equity Premium Income ETF
+GLD|黄金 ETF（SPDR）|SPDR Gold Shares
+IAU|黄金 ETF（安硕）|iShares Gold Trust
+SLV|白银 ETF|iShares Silver Trust
+TLT|20年以上美国国债 ETF|iShares 20+ Year Treasury Bond ETF
+IEF|7-10年美国国债 ETF|iShares 7-10 Year Treasury Bond ETF
+SGOV|0-3个月美国国债 ETF|iShares 0-3 Month Treasury Bond ETF
+BIL|1-3个月美国国债 ETF|SPDR Bloomberg 1-3 Month T-Bill ETF
+BND|美国债券总体 ETF|Vanguard Total Bond Market ETF
+AGG|美国综合债券 ETF|iShares Core US Aggregate Bond ETF
+KWEB|中概互联网 ETF|KraneShares CSI China Internet ETF
+FXI|中国大盘股 ETF|iShares China Large-Cap ETF
+MCHI|中国 ETF（MSCI）|iShares MSCI China ETF
+EWJ|日本 ETF|iShares MSCI Japan ETF
+INDA|印度 ETF|iShares MSCI India ETF
+AAPL|苹果|Apple
+MSFT|微软|Microsoft
+NVDA|英伟达|NVIDIA
+GOOGL|谷歌 A 类|Alphabet Class A
+GOOG|谷歌 C 类|Alphabet Class C
+AMZN|亚马逊|Amazon
+META|Meta（脸书）|Meta Platforms
+TSLA|特斯拉|Tesla
+AVGO|博通|Broadcom
+TSM|台积电|Taiwan Semiconductor ADR
+ASML|阿斯麦|ASML Holding
+ORCL|甲骨文|Oracle
+ADBE|奥多比|Adobe
+CRM|赛富时|Salesforce
+NOW|ServiceNow|ServiceNow
+INTU|财捷|Intuit
+AMD|超威半导体|Advanced Micro Devices
+INTC|英特尔|Intel
+QCOM|高通|Qualcomm
+TXN|德州仪器|Texas Instruments
+MU|美光科技|Micron Technology
+ARM|安谋|Arm Holdings
+SMCI|超微电脑|Super Micro Computer
+DELL|戴尔|Dell Technologies
+ANET|Arista 网络|Arista Networks
+CSCO|思科|Cisco Systems
+IBM|IBM|International Business Machines
+NFLX|奈飞|Netflix
+PLTR|Palantir|Palantir Technologies
+SNOW|Snowflake|Snowflake
+CRWD|CrowdStrike|CrowdStrike
+PANW|派拓网络|Palo Alto Networks
+NET|Cloudflare|Cloudflare
+DDOG|Datadog|Datadog
+SHOP|Shopify|Shopify
+UBER|优步|Uber Technologies
+ABNB|爱彼迎|Airbnb
+SPOT|Spotify|Spotify Technology
+RBLX|Roblox|Roblox
+PYPL|贝宝|PayPal
+XYZ|Block（原 SQ）|Block Inc
+COIN|Coinbase|Coinbase Global
+HOOD|Robinhood|Robinhood Markets
+MSTR|Strategy（微策略）|Strategy (MicroStrategy)
+BRK.B|伯克希尔 B 类|Berkshire Hathaway Class B
+JPM|摩根大通|JPMorgan Chase
+BAC|美国银行|Bank of America
+WFC|富国银行|Wells Fargo
+GS|高盛|Goldman Sachs
+MS|摩根士丹利|Morgan Stanley
+V|维萨|Visa
+MA|万事达|Mastercard
+AXP|美国运通|American Express
+BLK|贝莱德|BlackRock
+KO|可口可乐|Coca-Cola
+PEP|百事|PepsiCo
+MCD|麦当劳|McDonald's
+SBUX|星巴克|Starbucks
+NKE|耐克|Nike
+LULU|露露乐蒙|Lululemon Athletica
+COST|好市多|Costco
+WMT|沃尔玛|Walmart
+HD|家得宝|Home Depot
+DIS|迪士尼|Walt Disney
+PG|宝洁|Procter & Gamble
+LLY|礼来|Eli Lilly
+NVO|诺和诺德|Novo Nordisk ADR
+JNJ|强生|Johnson & Johnson
+UNH|联合健康|UnitedHealth Group
+PFE|辉瑞|Pfizer
+MRK|默沙东|Merck & Co
+ABBV|艾伯维|AbbVie
+MRNA|莫德纳|Moderna
+XOM|埃克森美孚|Exxon Mobil
+CVX|雪佛龙|Chevron
+BA|波音|Boeing
+CAT|卡特彼勒|Caterpillar
+GE|通用电气航空航天|GE Aerospace
+F|福特汽车|Ford Motor
+GM|通用汽车|General Motors
+RIVN|Rivian|Rivian Automotive
+BABA|阿里巴巴|Alibaba ADR
+PDD|拼多多|PDD Holdings
+JD|京东|JD.com ADR
+BIDU|百度|Baidu ADR
+NIO|蔚来|NIO Inc
+XPEV|小鹏汽车|XPeng ADR
+LI|理想汽车|Li Auto ADR
+NTES|网易|NetEase ADR
+TME|腾讯音乐|Tencent Music Entertainment
+BILI|哔哩哔哩|Bilibili ADR
+TCOM|携程|Trip.com Group
+ZTO|中通快递|ZTO Express
+YUMC|百胜中国|Yum China
+BEKE|贝壳|KE Holdings
+FUTU|富途控股|Futu Holdings
+TIGR|老虎证券|UP Fintech
+IQ|爱奇艺|iQIYI
+VIPS|唯品会|Vipshop
+WB|微博|Weibo
+EDU|新东方|New Oriental Education
+TAL|好未来|TAL Education
+0700|腾讯控股|Tencent
+9988|阿里巴巴-W|Alibaba Group
+3690|美团-W|Meituan
+1810|小米集团-W|Xiaomi
+9618|京东集团-SW|JD.com
+9999|网易-S|NetEase
+9888|百度集团-SW|Baidu
+1024|快手-W|Kuaishou
+9961|携程集团-S|Trip.com
+2015|理想汽车-W|Li Auto
+9866|蔚来-SW|NIO
+9868|小鹏汽车-W|XPeng
+1211|比亚迪股份|BYD
+0175|吉利汽车|Geely Automobile
+0981|中芯国际|SMIC
+0992|联想集团|Lenovo
+2382|舜宇光学科技|Sunny Optical
+0268|金蝶国际|Kingdee
+0020|商汤-W|SenseTime
+6618|京东健康|JD Health
+2269|药明生物|WuXi Biologics
+0005|汇丰控股|HSBC Holdings
+0939|建设银行|China Construction Bank
+1398|工商银行|ICBC
+3988|中国银行|Bank of China
+3968|招商银行|China Merchants Bank
+2318|中国平安|Ping An Insurance
+1299|友邦保险|AIA Group
+0388|香港交易所|HKEX
+0941|中国移动|China Mobile
+0883|中国海洋石油|CNOOC
+0857|中国石油股份|PetroChina
+0386|中国石油化工股份|Sinopec
+1088|中国神华|China Shenhua
+2899|紫金矿业|Zijin Mining
+2020|安踏体育|Anta Sports
+2331|李宁|Li Ning
+9633|农夫山泉|Nongfu Spring
+6690|海尔智家|Haier Smart Home
+6862|海底捞|Haidilao
+1876|百威亚太|Budweiser APAC
+0291|华润啤酒|China Resources Beer
+1109|华润置地|China Resources Land
+0016|新鸿基地产|Sun Hung Kai Properties
+0001|长和|CK Hutchison
+0002|中电控股|CLP Holdings
+0003|香港中华煤气|Hong Kong and China Gas
+0006|电能实业|Power Assets
+0027|银河娱乐|Galaxy Entertainment
+1928|金沙中国|Sands China
+0066|港铁公司|MTR Corporation
+0823|领展房产基金|Link REIT
+2800|盈富基金|Tracker Fund of Hong Kong
+2828|恒生中国企业 ETF|Hang Seng China Enterprises Index ETF
+3033|南方恒生科技 ETF|CSOP Hang Seng TECH Index ETF
+3067|安硕恒生科技 ETF|iShares Hang Seng TECH ETF`
+    .split("\n").map((line) => { const [c, zh, en] = line.split("|"); return { c, zh, en }; });
+  const ZH = Object.fromEntries(LIST.map((x) => [x.c, x.zh]));
+  const EN = Object.fromEntries(LIST.map((x) => [x.c, x.en]));
+  const DEFAULT_PICKS = ["QQQM", "VOO", "AAPL", "NVDA", "TSLA", "0700", "9988", "NIO"];
+
+  const state = { history: {}, histReady: false, trades: [], fixed: [], pendingFix: null, fx: 7.8, prices: {}, quotes: {}, updatedAt: "", source: "", ready: false, canWrite: null, pendingDelete: null };
+  let db = null;
+  const $ = (s) => document.querySelector(s);
+
+  // ---------- symbols and currency ----------
+  function normSym(raw) {
+    let s = String(raw || "").trim().toUpperCase().replace(/\.HK$/, "");
+    if (/^\d{1,5}$/.test(s)) { s = String(Number(s)); return s === "0" ? "" : s.padStart(4, "0"); }
+    s = s.replace(/-/g, ".");
+    return /^[A-Z][A-Z0-9.]{0,9}$/.test(s) ? s : "";
+  }
+  const isHK = (sym) => /^\d{4,5}$/.test(sym);
+  const ccyOf = (sym) => (isHK(sym) ? "HKD" : "USD");
+  const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+  const toUSD = (n, ccy) => (ccy === "HKD" ? n / state.fx : n);
+  const nameOf = (sym) => ZH[sym] || (state.quotes[sym] && state.quotes[sym].name) || "";
+
+  // ---------- dates (all YYYY-MM-DD, Hong Kong calendar) ----------
+  const dayDiff = (a, b) => Math.round((parseD(b) - parseD(a)) / 864e5);
+  // Month arithmetic that keeps month-end dates at month end (6/30 - 6 months = 12/31), as Treasury coupon dates do.
+  function addMonths(s, n) {
+    const [y, m, d] = s.split("-").map(Number);
+    const eom = d === new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+    return fmtD(new Date(Date.UTC(y, m - 1 + n, eom ? last : Math.min(d, last))));
+  }
+  const parseD = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const fmtD = (dt) => dt.toISOString().slice(0, 10);
+  const addDays = (s, n) => { const dt = parseD(s); dt.setUTCDate(dt.getUTCDate() + n); return fmtD(dt); };
+  const weekOf = (s) => { const dt = parseD(s); dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7)); return fmtD(dt); };
+  const md = (s) => { const [, m, d] = s.split("-"); return Number(m) + "/" + Number(d); };
+  function todayHK() {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    } catch (e) { return fmtD(new Date()); }
+  }
+  function stamp(iso) {
+    try {
+      return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Hong_Kong", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+    } catch (e) { return iso; }
+  }
+
+  // ---------- number formatting ----------
+  const nf2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const nf3 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  const nfQ = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+  const cur = (c) => (c === "HKD" ? "HK$" : "$");
+  const money = (n, c) => (n < -0.004 ? "−" : "") + cur(c) + nf2.format(Math.abs(n));
+  const price = (n, c) => cur(c) + nf3.format(n);
+  const signed = (n, c) => (Math.abs(n) < 0.005 ? cur(c) + "0.00" : (n > 0 ? "+" : "−") + cur(c) + nf2.format(Math.abs(n)));
+  const pct = (n) => (n > 0.004 ? "+" : n < -0.004 ? "−" : "") + nf2.format(Math.abs(n)) + "%";
+  const tone = (n) => (n > 0.004 ? "up" : n < -0.004 ? "down" : "");
+  // A small second line under an amount: its RMB value (HK stocks also get the USD value first).
+  const usdCap = (n, ccy, sgn) => (ccy === "HKD" && n != null ? '<span class="cap">≈ ' + (sgn ? signed : money)(toUSD(n, ccy)) + "</span>" : "");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function setStatus(text, kind) { const el = $("#status"); el.textContent = text; el.dataset.kind = kind || ""; }
+  function formMsg(text, kind) { const el = $("#formMsg"); el.textContent = text; el.dataset.kind = kind || ""; }
+  function errText(err) {
+    const code = err && err.code;
+    if (code === "invalid_argument") return "保存被拒绝：你可能没有编辑权限，或填写的内容格式不对。";
+    if (code === "quota_exceeded") return "数据库已满，删掉一些旧记录后再保存。";
+    if (code === "resource_exhausted") return "操作太频繁，等几秒再试。";
+    if (code === "unavailable") return "网络暂时不稳，过一会儿再试。";
+    if (code === "revoked") return "访问权限已变更，刷新页面后再试。";
+    return "保存失败（" + (code || "未知原因") + "），刷新页面后再试。";
+  }
+
+  // ---------- calculations ----------
+  function sortedTrades() {
+    return state.trades.slice().sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+  }
+  const tradeCcy = (t) => (t.currency === "HKD" || t.currency === "USD" ? t.currency : ccyOf(t.symbol));
+
+  function compute(list) {
+    const syms = new Map();
+    let feesUSD = 0, realizedUSD = 0;
+    const warnings = [];
+    for (const t of list) {
+      const ccy = tradeCcy(t);
+      const s = syms.get(t.symbol) || { symbol: t.symbol, ccy, shares: 0, cost: 0, realized: 0 };
+      const q = Number(t.shares) || 0, p = Number(t.price) || 0, f = Number(t.fees) || 0;
+      feesUSD += toUSD(f, ccy);
+      if (t.side === "buy") {
+        s.shares += q; s.cost += q * p + f;
+      } else {
+        if (q > s.shares + 1e-9) warnings.push(md(t.date) + " 卖出 " + t.symbol + " " + nfQ.format(q) + " 股，超过当时持有的 " + nfQ.format(s.shares) + " 股，请检查是否漏记了买入");
+        const sellQ = Math.min(q, s.shares);
+        const avg = s.shares > 0 ? s.cost / s.shares : 0;
+        const r = sellQ * p - f - avg * sellQ;
+        s.realized += r; realizedUSD += toUSD(r, ccy);
+        s.cost -= avg * sellQ; s.shares -= sellQ;
+        if (s.shares < 1e-9) { s.shares = 0; s.cost = 0; }
+      }
+      syms.set(t.symbol, s);
+    }
+    let mv = 0, cost = 0, unreal = 0, priced = true, held = false;
+    for (const s of syms.values()) {
+      if (s.shares <= 0) continue;
+      held = true; cost += toUSD(s.cost, s.ccy);
+      const px = Number(state.prices[s.symbol]) || 0;
+      if (px > 0) {
+        s.mv = px * s.shares; s.unreal = s.mv - s.cost;
+        mv += toUSD(s.mv, s.ccy); unreal += toUSD(s.unreal, s.ccy);
+      } else priced = false;
+    }
+    return { syms: [...syms.values()], fees: feesUSD, realized: realizedUSD, mv, cost, unreal, priced, held, warnings };
+  }
+
+  // ---------- Treasuries and time deposits ----------
+  // Coupon dates counted back from maturity: the first one is on or before settlement, the last is maturity.
+  function coupons(b) {
+    const step = 12 / (b.freq || 2), out = [];
+    for (let i = 0; i < 400; i++) { const c = addMonths(b.maturity, -i * step); out.unshift(c); if (c <= b.settle) break; }
+    return out;
+  }
+  // Hold-to-maturity value: clean price pulls straight-line to par, plus accrued coupon; a reference price replaces the clean part.
+  function bondAt(b, d, mark) {
+    if (d < b.settle) return null;
+    const face = b.face, cpn = (face * b.coupon) / 100 / (b.freq || 2), cs = coupons(b);
+    const cleanCost = (face * b.price) / 100, cost = cleanCost + (b.accruedPaid || 0);
+    if (d >= b.maturity) return { value: 0, cost: 0, income: cpn * (cs.length - 1) + face - cost, matured: true };
+    let k = 0;
+    while (k + 1 < cs.length && cs[k + 1] <= d) k++;
+    const accr = (cpn * dayDiff(cs[k], d)) / dayDiff(cs[k], cs[k + 1]);
+    const clean = mark != null ? (face * mark) / 100 : cleanCost + ((face - cleanCost) * dayDiff(b.settle, d)) / dayDiff(b.settle, b.maturity);
+    return { value: clean + accr, cost, income: clean + accr - cost + cpn * k, accr, matured: false };
+  }
+  function bondYield(b) {
+    const face = b.face, f = b.freq || 2, cpn = (face * b.coupon) / 100 / f, cs = coupons(b), dirty = (face * b.price) / 100 + (b.accruedPaid || 0);
+    const frac = dayDiff(b.settle, cs[1]) / dayDiff(cs[0], cs[1]);
+    const pv = (y) => cs.slice(1).reduce((s, c, i) => s + (cpn + (i === cs.length - 2 ? face : 0)) / Math.pow(1 + y / f, frac + i), 0);
+    let lo = -0.5, hi = 1;
+    for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (pv(m) > dirty) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  // Time deposit: the maturity interest spread evenly over the days of the term.
+  function depositAt(t, d) {
+    if (d < t.start) return null;
+    if (d >= t.maturity) return { value: 0, cost: 0, income: t.interest, matured: true };
+    const income = (t.interest * dayDiff(t.start, d)) / dayDiff(t.start, t.maturity);
+    return { value: t.principal + income, cost: t.principal, income, matured: false };
+  }
+  const markOn = (f, d) => (f.kind === "bond" && Number(f.markPrice) > 0 && f.markDate && d >= f.markDate ? Number(f.markPrice) : null);
+  function fixedAt(f, d) {
+    const r = f.kind === "bond" ? bondAt(f, d, markOn(f, d)) : depositAt(f, d);
+    if (!r) return null;
+    const c = f.currency || "USD";
+    return { value: toUSD(r.value, c), cost: toUSD(r.cost, c), income: toUSD(r.income, c), raw: r };
+  }
+  const fixedStart = (f) => (f.kind === "bond" ? f.settle : f.start);
+  const fixedTotal = (f) => (f.kind === "bond" ? bondAt(f, f.maturity, null).income : f.interest);
+  function fixedNow() {
+    const d = todayHK();
+    let value = 0, cost = 0, income = 0;
+    for (const f of state.fixed) { const r = fixedAt(f, d); if (r) { value += r.value; cost += r.cost; income += r.income; } }
+    return { value, cost, income };
+  }
+
+  // ---------- rendering ----------
+  function symCell(sym) {
+    const nm = nameOf(sym);
+    return '<td class="sym">' + esc(sym) + (isHK(sym) ? '<span class="mk">港股</span>' : "") + (nm ? '<span class="nm">' + esc(nm) + "</span>" : "") + "</td>";
+  }
+
+  function renderSummary(c) {
+    const n = c.syms.filter((s) => s.shares > 0).length, parts = [];
+    if (n) parts.push(n + " 只");
+    if (c.held && c.priced) parts.push("市值 " + money(c.mv), '浮动盈亏 <span class="' + tone(c.unreal) + '">' + signed(c.unreal) + (c.cost > 0 ? "（" + pct(c.unreal / c.cost * 100) + "）" : "") + "</span>");
+    parts.push('已实现盈亏 <span class="' + tone(c.realized) + '">' + signed(c.realized) + "</span>", "累计费用 " + money(c.fees));
+    $("#holdSum").innerHTML = state.ready && (c.syms.length || c.fees) ? parts.join(" · ") : "";
+  }
+
+  // ---------- asset mix (share of total assets) ----------
+  const CLASS_NAME = { stk: "股票", bond: "国债", dep: "定期存款" };
+  const SHADES = [1, 0.7, 0.5, 0.36, 0.26];
+  function mixItems(c) {
+    const d = todayHK(), items = [];
+    for (const s of c.syms) if (s.shares > 0 && Number(state.prices[s.symbol]) > 0) items.push({ k: "stk", name: s.symbol, sub: nameOf(s.symbol), v: toUSD(s.mv, s.ccy) });
+    for (const f of state.fixed) { const r = fixedAt(f, d); if (r && r.value > 0) items.push({ k: f.kind === "bond" ? "bond" : "dep", name: f.name, sub: f.note || "", v: r.value }); }
+    const order = { stk: 0, bond: 1, dep: 2 };
+    items.sort((a, b) => order[a.k] - order[b.k] || b.v - a.v);
+    const seen = {};
+    for (const it of items) { const n = seen[it.k] = (seen[it.k] || 0) + 1; it.op = SHADES[Math.min(n - 1, SHADES.length - 1)]; }
+    return items;
+  }
+  let mixLay = null;
+  function renderMix(c) {
+    const items = mixItems(c), total = items.reduce((t, it) => t + it.v, 0), box = $("#mixChart");
+    box.querySelectorAll("svg").forEach((n) => n.remove());
+    $("#mixTip").hidden = true;
+    mixLay = null;
+    const unpriced = c.syms.some((s) => s.shares > 0 && !(Number(state.prices[s.symbol]) > 0));
+    $("#mixSum").textContent = unpriced ? "有股票还没有价格，暂不计入；先在持仓表里填现价。" : items.length ? "共 " + items.length + " 项" : "";
+    $("#mixTotal").textContent = total > 0 ? money(total) : "—";
+    if (!items.length || !(total > 0)) {
+      $("#mix tbody").innerHTML = '<tr><td colspan="4" class="empty">' + (state.ready ? "还没有持仓。" : "正在读取…") + "</td></tr>";
+      $("#mix tfoot").innerHTML = "";
+      return;
+    }
+    const S = 300, R = 112, r0 = 70, NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + S + " " + S);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "资产占比：" + items.map((it) => it.name + " " + nf2.format((it.v / total) * 100) + "%").join("，"));
+    const pt = (r, a) => [S / 2 + r * Math.sin(a), S / 2 - r * Math.cos(a)];
+    const arc = (a0, a1, rO) => {
+      if (a1 - a0 >= 2 * Math.PI - 1e-6) a1 = a0 + 2 * Math.PI - 1e-4;
+      const big = a1 - a0 > Math.PI ? 1 : 0, [x0, y0] = pt(rO, a0), [x1, y1] = pt(rO, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0);
+      return "M" + x0 + "," + y0 + "A" + rO + "," + rO + " 0 " + big + " 1 " + x1 + "," + y1 + "L" + x2 + "," + y2 + "A" + r0 + "," + r0 + " 0 " + big + " 0 " + x3 + "," + y3 + "Z";
+    };
+    const gap = items.length > 1 ? 0.012 : 0;
+    let a = 0;
+    const paths = items.map((it, i) => {
+      const span = (it.v / total) * 2 * Math.PI, a0 = a + gap / 2, a1 = a + Math.max(span - gap / 2, gap / 2 + 0.001);
+      a += span;
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", arc(a0, a1, R));
+      p.setAttribute("style", "fill: var(--c-" + it.k + "); fill-opacity: " + it.op);
+      p.dataset.i = i;
+      p._arc = [a0, a1];
+      svg.append(p);
+      return p;
+    });
+    // Labels: big slices carry name and share inside the ring; small ones get a leader line and an outside label.
+    const short = (it) => (it.k === "stk" ? it.name : CLASS_NAME[it.k].replace("定期存款", "定存"));
+    const text = (x, y, anchor, lines) => {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("class", "lbl"); t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("text-anchor", anchor);
+      lines.forEach((ln, k) => {
+        const ts = document.createElementNS(NS, "tspan");
+        ts.setAttribute("x", x); ts.setAttribute("dy", k === 0 ? (lines.length > 1 ? "-0.2em" : "0.35em") : "1.2em");
+        if (k === 0) ts.setAttribute("class", "n");
+        ts.textContent = ln; t.append(ts);
+      });
+      svg.append(t);
+    };
+    let acc = 0;
+    items.forEach((it) => {
+      const share = it.v / total, mid = (acc + share / 2) * 2 * Math.PI, label = nf2.format(share * 100) + "%";
+      acc += share;
+      if (share >= 0.07) {
+        const [x, y] = pt((R + r0) / 2, mid);
+        text(x, y, "middle", [short(it), label]);
+      } else {
+        const [x0, y0] = pt(R + 2, mid), [x1, y1] = pt(R + 14, mid), right = Math.sin(mid) >= 0;
+        const line = document.createElementNS(NS, "polyline");
+        line.setAttribute("class", "lead");
+        line.setAttribute("points", x0 + "," + y0 + " " + x1 + "," + y1 + " " + (x1 + (right ? 8 : -8)) + "," + y1);
+        svg.append(line);
+        text(x1 + (right ? 11 : -11), y1, right ? "start" : "end", [short(it) + " " + label]);
+      }
+    });
+    box.insertBefore(svg, box.firstChild);
+    mixLay = { items, total, paths, arc, R };
+    $("#mix tbody").innerHTML = items.map((it, i) => '<tr data-i="' + i + '"><td><span class="sw ' + it.k + '" style="opacity:' + it.op + '"></span>' + esc(it.name) +
+      (it.sub ? '<span class="nm">' + esc(it.sub) + "</span>" : "") + "</td><td>" + CLASS_NAME[it.k] + '</td><td class="num">' + money(it.v) + usdCap(it.v, "USD") +
+      '</td><td class="num">' + nf2.format((it.v / total) * 100) + "%</td></tr>").join("");
+    const byClass = Object.keys(CLASS_NAME).map((k) => [k, items.filter((it) => it.k === k).reduce((t, it) => t + it.v, 0)]).filter(([, v]) => v > 0);
+    $("#mix tfoot").innerHTML = '<tr><td colspan="2">合计 <span class="muted" style="font-weight:400">（' + byClass.map(([k, v]) => CLASS_NAME[k] + " " + nf2.format((v / total) * 100) + "%").join(" · ") +
+      '）</span></td><td class="num">' + money(total) + '</td><td class="num">100%</td></tr>';
+  }
+  function mixFocus(i, clientX, clientY) {
+    if (!mixLay) return;
+    mixLay.paths.forEach((p, j) => p.setAttribute("d", mixLay.arc(p._arc[0], p._arc[1], j === i ? mixLay.R + 4 : mixLay.R)));
+    document.querySelectorAll("#mix tbody tr").forEach((tr) => tr.classList.toggle("hot", Number(tr.dataset.i) === i));
+    const tip = $("#mixTip");
+    if (i == null || clientX == null) { tip.hidden = true; return; }
+    const it = mixLay.items[i], row = (k, v) => '<div class="r"><span>' + k + "</span><span>" + v + "</span></div>";
+    tip.innerHTML = '<div class="d">' + esc(it.name) + " · " + CLASS_NAME[it.k] + "</div>" + row("金额", money(it.v)) +
+      row("占总资产", nf2.format((it.v / mixLay.total) * 100) + "%");
+    tip.hidden = false;
+    const box = $("#mixChart").getBoundingClientRect(), bw = box.width, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(bw - tw, clientX - box.left + 12)) + "px";
+    tip.style.top = Math.max(0, clientY - box.top - 10) + "px";
+  }
+  $("#mixChart").addEventListener("pointermove", (e) => { const p = e.target.closest("path"); mixFocus(p ? Number(p.dataset.i) : null, e.clientX, e.clientY); });
+  $("#mixChart").addEventListener("pointerdown", (e) => { const p = e.target.closest("path"); if (p) mixFocus(Number(p.dataset.i), e.clientX, e.clientY); });
+  $("#mixChart").addEventListener("pointerleave", () => mixFocus(null));
+  $("#mix").addEventListener("pointerover", (e) => { const tr = e.target.closest("tbody tr[data-i]"); mixFocus(tr ? Number(tr.dataset.i) : null); });
+  $("#mix").addEventListener("pointerleave", () => mixFocus(null));
+
+  function renderFixed() {
+    const tb = $("#fixed tbody"), ro = !db || state.canWrite === false, d = todayHK();
+    const fx = fixedNow();
+    $("#fixSum").textContent = state.fixed.length ? "合计 " + money(fx.value) + " · 已计收益 " + signed(fx.income) : "";
+    if (!state.fixed.length) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">' + (state.ready ? "还没有国债或定期存款。点页面顶部的“＋ 记一笔”，选“国债”或“定期存款”录入。" : "正在读取…") + "</td></tr>";
+      return;
+    }
+    const list = state.fixed.slice().sort((a, b) => (fixedStart(a) < fixedStart(b) ? -1 : 1));
+    tb.innerHTML = list.map((f) => {
+      const c = f.currency || "USD", r = fixedAt(f, d), id = esc(f.id), bond = f.kind === "bond";
+      const left = dayDiff(d, f.maturity), started = d >= fixedStart(f);
+      const term = md(fixedStart(f)) + (bond ? " 结算" : " 存入") + " → " + f.maturity.replace(/-0?/g, "/") +
+        '<span class="cap">' + (left > 0 ? "还有 " + left + " 天到期" : "已到期") + "</span>";
+      const rate = bond
+        ? "票息 " + nf3.format(f.coupon) + "%" + '<span class="cap">买入收益率 ' + nf2.format(bondYield(f) * 100) + "%</span>"
+        : nf2.format(f.rate) + "%";
+      const amt = bond
+        ? money(f.face, c) + '<span class="cap">成交价 ' + nfQ.format(f.price) + "%</span>"
+        : money(f.principal, c);
+      const inc = r ? '<span class="' + tone(r.raw.income) + '">' + signed(r.raw.income, c) + "</span>" + usdCap(r.raw.income, c, true) : '<span class="muted">未开始</span>';
+      const val = !r ? "—" : r.raw.matured ? '<span class="muted">已到期，回到储蓄账户</span>'
+        : money(r.raw.value, c) + (bond ? '<span class="cap">含应计利息 ' + money(r.raw.accr, c) + "</span>" : usdCap(r.raw.value, c));
+      const mark = !bond ? '<span class="muted">—</span>'
+        : '<input class="px fx-mark" type="number" inputmode="decimal" step="any" min="0" data-id="' + id + '" value="' + (Number(f.markPrice) > 0 ? f.markPrice : "") +
+          '" placeholder="%" aria-label="' + esc(f.name) + ' 参考卖出价（%）"' + (ro ? " disabled" : "") + ">" +
+          '<span class="cap">' + (Number(f.markPrice) > 0 ? "按市价 · " + md(f.markDate) : "空着按持有到期") + "</span>";
+      let acts = "";
+      if (!ro) {
+        acts = state.pendingFix === f.id
+          ? '<button class="mini danger" type="button" data-fact="confirm" data-id="' + id + '">确认删除</button><button class="mini" type="button" data-fact="cancel">取消</button>'
+          : '<button class="mini" type="button" data-fact="del" data-id="' + id + '">删除</button>';
+      }
+      return '<tr><td class="fname">' + esc(f.name) + '<span class="nm">' + esc([f.isin, f.note].filter(Boolean).join(" · ")) + "</span></td>" +
+        '<td class="num">' + amt + "</td><td>" + term + '</td><td class="num">' + rate + '</td><td class="num">' + (started ? inc : '<span class="muted">未开始</span>') +
+        '</td><td class="num">' + val + '</td><td class="num">' + mark + '</td><td class="num"><span class="up">' + signed(fixedTotal(f), c) + "</span>" + usdCap(fixedTotal(f), c, true) +
+        '</td><td><div class="acts">' + acts + "</div></td></tr>";
+    }).join("");
+  }
+
+  // Close of the last trading day before `date`, from the stored daily closes.
+  function prevClose(sym, date) {
+    const hs = state.history[sym] || {};
+    let best = "";
+    for (const d of Object.keys(hs)) if (d < date && d > best) best = d;
+    return best ? Number(hs[best]) || 0 : 0;
+  }
+
+  function renderHoldings(c) {
+    const tb = $("#holdings tbody");
+    const ae = document.activeElement;
+    const keep = ae && ae.classList && ae.classList.contains("px") ? { id: ae.id, v: ae.value } : null;
+    const ro = !db || state.canWrite === false;
+    const usdMV = (s) => (s.shares > 0 ? toUSD((Number(state.prices[s.symbol]) || 0) * s.shares || s.cost, s.ccy) : -1);
+    const rows = c.syms.slice().sort((a, b) => usdMV(b) - usdMV(a) || a.symbol.localeCompare(b.symbol));
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="empty">' + (state.ready
+        ? "还没有持仓。点页面顶部的“＋ 记一笔”录入第一笔买入，这里会显示股数、平均成本和盈亏。"
+        : "正在读取持仓…") + "</td></tr>";
+    } else {
+      tb.innerHTML = rows.map((s) => {
+        if (s.shares <= 0) {
+          return '<tr class="closed">' + symCell(s.symbol) + '<td class="num">0</td><td colspan="6" class="num">已清仓 · 已实现 <span class="' + tone(s.realized) + '">' + signed(s.realized, s.ccy) + "</span></td></tr>";
+        }
+        const avg = s.cost / s.shares;
+        const px = Number(state.prices[s.symbol]) || 0;
+        const mvCell = px > 0 ? money(s.mv, s.ccy) + usdCap(s.mv, s.ccy) : '<span class="muted">等待收盘价</span>';
+        const uCell = px > 0
+          ? '<span class="' + tone(s.unreal) + '">' + signed(s.unreal, s.ccy) + "<br><small>" + (s.cost > 0 ? pct(s.unreal / s.cost * 100) : "") + "</small></span>" + usdCap(s.unreal, s.ccy, true)
+          : '<span class="muted">—</span>';
+        const qt = state.quotes[s.symbol];
+        const cap = qt && qt.date ? (qt.source === "手动" ? "手动填写 " + md(qt.date) : md(qt.date) + (qt.kind === "open" ? " 开盘" : qt.kind === "live" ? " 盘中" : " 收盘")) : "";
+        const sym = esc(s.symbol), prev = prevClose(s.symbol, qt && qt.date ? qt.date : todayHK());
+        const dayCell = px > 0 && prev > 0
+          ? '<span class="' + tone(px - prev) + '">' + pct((px / prev - 1) * 100) + "<br><small>" + signed((px - prev) * s.shares, s.ccy) + "</small></span>"
+          : '<span class="muted">—</span>';
+        const realCell = Math.abs(s.realized) >= 0.005 ? '<span class="' + tone(s.realized) + '">' + signed(s.realized, s.ccy) + "</span>" : '<span class="muted">—</span>';
+        return "<tr>" + symCell(s.symbol) + '<td class="num">' + nfQ.format(s.shares) + '</td><td class="num">' + price(avg, s.ccy) +
+          '</td><td class="num"><input class="px" type="number" inputmode="decimal" step="any" min="0" id="price-' + sym + '" data-sym="' + sym +
+          '" value="' + (px > 0 ? px : "") + '" placeholder="' + (s.ccy === "HKD" ? "港元" : "美元") + '" aria-label="' + sym + " 现价（" + (s.ccy === "HKD" ? "港元" : "美元") + '）"' + (ro ? " disabled" : "") +
+          ">" + (cap ? '<span class="cap">' + cap + "</span>" : "") + '</td><td class="num">' + dayCell + '</td><td class="num">' + mvCell + '</td><td class="num">' + uCell +
+          '</td><td class="num">' + realCell + "</td></tr>";
+      }).join("");
+    }
+    if (keep) { const n = document.getElementById(keep.id); if (n) { n.value = keep.v; n.focus(); } }
+    const w = $("#warn");
+    w.textContent = c.warnings.join("；");
+    w.hidden = !c.warnings.length;
+  }
+
+
+  // ---------- profit trend ----------
+  // One row per trading day since the first trade, valued at that day's closes. When the holdings table has a
+  // newer price (typed in, or the evening open), one extra "最新" row uses those prices so both agree.
+  function pnlSeries(list) {
+    if (!list.length && !state.fixed.length) return [];
+    const first = [list.length ? list[0].date : "9999"].concat(state.fixed.map(fixedStart)).sort()[0], days = new Set();
+    for (const sym of Object.keys(state.history)) for (const d of Object.keys(state.history[sym])) if (d >= first) days.add(d);
+    const sorted = [...days].sort(), lastHist = sorted[sorted.length - 1] || "";
+    let live = "";
+    for (const sym of new Set(list.map((t) => t.symbol))) {
+      const q = state.quotes[sym];
+      if (q && q.date && q.date > lastHist && q.date > live && Number(state.prices[sym]) > 0) live = q.date;
+    }
+    if (!live) {
+      for (const sym of new Set(list.map((t) => t.symbol))) {
+        const q = state.quotes[sym];
+        if (q && q.kind === "live" && q.date === lastHist && Number(state.prices[sym]) > 0) live = lastHist;
+      }
+    }
+    // With bonds or deposits, the last point is today, so accrued interest matches the summary.
+    if (state.fixed.length && todayHK() > (live || lastHist)) live = todayHK();
+    if (live && live !== lastHist) sorted.push(live);
+    const pos = {}, px = {};
+    let realized = 0, k = 0, prev = 0;
+    return sorted.map((d) => {
+      const isLive = d === live, trades = [];
+      for (; k < list.length && list[k].date <= d; k++) {
+        const t = list[k], ccy = tradeCcy(t), q = Number(t.shares) || 0, p = Number(t.price) || 0, f = Number(t.fees) || 0;
+        trades.push(t);
+        const s = pos[t.symbol] = pos[t.symbol] || { shares: 0, cost: 0, ccy };
+        if (t.side === "buy") { s.shares += q; s.cost += q * p + f; continue; }
+        const sold = Math.min(q, s.shares), avg = s.shares > 0 ? s.cost / s.shares : 0;
+        realized += toUSD(sold * p - f - avg * sold, ccy);
+        s.cost -= avg * sold; s.shares -= sold;
+      }
+      let value = 0, cost = 0;
+      const bySym = [];
+      for (const sym of Object.keys(pos)) {
+        const c = isLive && Number(state.prices[sym]) > 0 ? Number(state.prices[sym]) : state.history[sym] && state.history[sym][d];
+        if (c != null) px[sym] = Number(c);
+        const s = pos[sym];
+        if (s.shares > 1e-9 && px[sym] != null) {
+          const v = toUSD(px[sym] * s.shares, s.ccy), co = toUSD(s.cost, s.ccy);
+          value += v; cost += co;
+          bySym.push({ sym, close: px[sym], ccy: s.ccy, unreal: v - co });
+        }
+      }
+      let fixedValue = 0, fixedCost = 0, fixedIncome = 0;
+      const byFixed = [];
+      for (const f of state.fixed) {
+        const r = fixedAt(f, d);
+        if (!r) continue;
+        fixedValue += r.value; fixedCost += r.cost; fixedIncome += r.income;
+        byFixed.push({ name: f.name, income: r.income });
+      }
+      const total = value - cost + realized + fixedIncome, day = total - prev, base = cost + fixedCost;
+      prev = total;
+      return { date: d, live: isLive, value, cost, realized, total, day, pct: base > 0 ? total / base : null, bySym, trades, fixedValue, fixedCost, fixedIncome, byFixed };
+    });
+  }
+  function niceTicks(lo, hi, n) {
+    const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p, out = [];
+    for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.5; v += step) out.push(Math.round(v * 1e6) / 1e6);
+    return out;
+  }
+  const WD = "日一二三四五六";
+  let pnlLay = null, pnlMode = "usd";
+  const pnlVal = (r) => (pnlMode === "pct" ? (r.pct == null ? 0 : r.pct * 100) : r.total);
+  const pnlFmt = (v) => (pnlMode === "pct" ? pct(v) : signed(v));
+
+  function renderPnl(list) {
+    const box = $("#pnlChart"), empty = $("#pnlEmpty"), tot = $("#pnlTotal"), sub = $("#pnlSub"), stats = $("#pnlStats");
+    box.querySelectorAll("svg").forEach((n) => n.remove());
+    $("#pnlTip").hidden = true;
+    pnlLay = null;
+    const rows = pnlSeries(list);
+    if (!rows.length) {
+      empty.hidden = false;
+      empty.textContent = !state.ready || !state.histReady ? "正在读取收盘价…"
+        : list.length || state.fixed.length ? "还没有收盘价数据，点“刷新数据”后显示。" : "录入第一笔买入后，这里会画出每天的累计收益。";
+      tot.textContent = "—"; tot.className = "pnl-total"; sub.innerHTML = ""; stats.hidden = true;
+      return;
+    }
+    empty.hidden = true;
+    const last = rows[rows.length - 1];
+    tot.textContent = signed(last.total); tot.className = "pnl-total " + tone(last.total);
+    sub.innerHTML = (last.pct == null ? "" : '收益率 <span class="' + tone(last.total) + '">' + pct(last.pct * 100) + "</span> · ") +
+      (last.live ? "较上一收盘 " : md(last.date) + " 当日 ") + '<span class="' + tone(last.day) + '">' + signed(last.day) + "</span>";
+
+    // Stats (always in USD): high, low, largest peak-to-trough drop, up days.
+    let hiI = 0, loI = 0, peak = -Infinity, peakI = 0, dd = 0, ddA = 0, ddB = 0, upDays = 0;
+    rows.forEach((r, i) => {
+      if (r.total > rows[hiI].total) hiI = i;
+      if (r.total < rows[loI].total) loI = i;
+      if (r.total > peak) { peak = r.total; peakI = i; }
+      if (peak - r.total > dd) { dd = peak - r.total; ddA = peakI; ddB = i; }
+      if (r.day > 0.004) upDays++;
+    });
+    const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
+    stats.innerHTML =
+      stat("最高", signed(rows[hiI].total), tone(rows[hiI].total), md(rows[hiI].date) + (rows[hiI].pct == null ? "" : " · " + pct(rows[hiI].pct * 100))) +
+      stat("最低", signed(rows[loI].total), tone(rows[loI].total), md(rows[loI].date) + (rows[loI].pct == null ? "" : " · " + pct(rows[loI].pct * 100))) +
+      stat("最大回撤", dd > 0.004 ? "−" + money(dd) : "$0.00", dd > 0.004 ? "down" : "", dd > 0.004 ? md(rows[ddA].date) + " → " + md(rows[ddB].date) : "还没有回落过") +
+      stat("盈利天数", upDays + " / " + rows.length, "", "当日盈亏为正的天数");
+    stats.hidden = false;
+
+    // Geometry: main plot, then the daily P/L bars, then date labels.
+    const W = Math.max(280, box.clientWidth - 16), narrow = W < 560;
+    const PH = narrow ? 180 : 230, GAP = 24, BH = narrow ? 44 : 58, XH = 22, BT = PH + GAP, HT = BT + BH + XH;
+    const vs = rows.map(pnlVal);
+    let lo = Math.min(0, ...vs), hi = Math.max(0, ...vs);
+    const minSpan = pnlMode === "pct" ? 0.2 : 1;
+    if (hi - lo < minSpan) { hi += minSpan / 2; lo -= minSpan / 2; }
+    const ticks = niceTicks(lo, hi, narrow ? 4 : 6);
+    lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+    const y = (v) => 14 + ((hi - v) / (hi - lo)) * (PH - 24);
+    const NS = "http://www.w3.org/2000/svg";
+    const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.append(n); return n; };
+    const svg = el("svg", { viewBox: "0 0 " + W + " " + HT, role: "img", tabindex: "0", "aria-label": "每日累计收益走势，最新 " + signed(last.total) + "。选中后用左右方向键逐日查看。" });
+    box.insertBefore(svg, empty);
+    const probe = el("text", { class: "pnl-tick" }, svg);
+    probe.textContent = ticks.map(pnlFmt).concat(vs.map(pnlFmt), ["当日盈亏"]).reduce((p, q) => (p.length >= q.length ? p : q));
+    const RW = Math.ceil(probe.getComputedTextLength()) + 18;
+    probe.remove();
+    const L = 2, R = W - RW;
+    const x = (i) => (rows.length > 1 ? L + 8 + (i * (R - L - 16)) / (rows.length - 1) : (L + R) / 2);
+    const stepX = rows.length > 1 ? (R - L - 16) / (rows.length - 1) : 40;
+
+    // Horizontal grid and value labels
+    for (const v of ticks) {
+      el("line", { x1: L, x2: R, y1: y(v), y2: y(v), style: "stroke: var(--line)" + (v === 0 ? "; stroke-width: 1.5; stroke: var(--muted); opacity: .55" : "") }, svg);
+      const t = el("text", { class: "pnl-tick", x: R + 8, y: y(v), dy: "0.32em" }, svg);
+      t.textContent = pnlFmt(v);
+    }
+    // Week starts: faint vertical lines and date labels; the last point is always labelled.
+    const lastLab = md(last.date) + (last.live ? " 最新" : "");
+    const lt = el("text", { class: "pnl-tick", x: x(rows.length - 1), y: HT - 6, "text-anchor": "end" }, svg);
+    lt.textContent = lastLab;
+    const lastLabW = lt.getComputedTextLength();
+    let prevX = -Infinity;
+    rows.forEach((r, i) => {
+      if (i > 0 && weekOf(r.date) === weekOf(rows[i - 1].date)) return;
+      el("line", { x1: x(i), x2: x(i), y1: 4, y2: BT + BH, style: "stroke: var(--line); stroke-dasharray: 2 3" }, svg);
+      if (x(i) - prevX < 40 || x(i) > x(rows.length - 1) - lastLabW - 30) return;
+      const t = el("text", { class: "pnl-tick", x: x(i), y: HT - 6, "text-anchor": i === 0 ? "start" : "middle" }, svg);
+      t.textContent = md(r.date);
+      prevX = x(i);
+    });
+
+    // Line and area, green above zero and red below
+    const y0 = y(0);
+    const defs = el("defs", {}, svg);
+    el("rect", { x: 0, y: 0, width: W, height: y0 }, el("clipPath", { id: "pnlUp" }, defs));
+    el("rect", { x: 0, y: y0, width: W, height: Math.max(0, PH - y0) }, el("clipPath", { id: "pnlDn" }, defs));
+    const pts = rows.map((r, i) => x(i).toFixed(1) + "," + y(vs[i]).toFixed(1));
+    const lineD = "M" + pts.join("L");
+    const areaD = "M" + x(0).toFixed(1) + "," + y0.toFixed(1) + "L" + pts.join("L") + "L" + x(rows.length - 1).toFixed(1) + "," + y0.toFixed(1) + "Z";
+    for (const [clip, color] of [["pnlUp", "var(--up)"], ["pnlDn", "var(--down)"]]) {
+      const g = el("g", { "clip-path": "url(#" + clip + ")" }, svg);
+      el("path", { d: areaD, style: "fill: " + color + "; opacity: .13" }, g);
+      el("path", { d: lineD, style: "fill: none; stroke: " + color + "; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round" }, g);
+    }
+    // Each trading day gets a small point when there is room for it
+    if (stepX >= 9) rows.forEach((r, i) => el("circle", { cx: x(i), cy: y(vs[i]), r: 1.8, style: "fill: " + (vs[i] >= 0 ? "var(--up)" : "var(--down)") }, svg));
+
+    // Highest and lowest points
+    const note = (i, above) => {
+      const xi = x(i), anchor = xi < L + 40 ? "start" : xi > R - 40 ? "end" : "middle";
+      el("circle", { cx: xi, cy: y(vs[i]), r: 3.2, style: "fill: var(--surface); stroke-width: 1.5; stroke: " + (vs[i] >= 0 ? "var(--up)" : "var(--down)") }, svg);
+      const t = el("text", { class: "pnl-note " + tone(vs[i]), x: xi, y: y(vs[i]) + (above ? -8 : 15), "text-anchor": anchor, style: "fill: currentColor" }, svg);
+      t.textContent = (above ? "最高 " : "最低 ") + pnlFmt(vs[i]);
+    };
+    let vHi = 0, vLo = 0;
+    vs.forEach((v, i) => { if (v > vs[vHi]) vHi = i; if (v < vs[vLo]) vLo = i; });
+    if (rows.length > 2 && vHi !== vLo) {
+      if (vHi !== rows.length - 1) note(vHi, true);
+      if (vLo !== rows.length - 1) note(vLo, false);
+    }
+    el("circle", { cx: x(rows.length - 1), cy: y(vs[vs.length - 1]), r: 4, style: last.live
+      ? "fill: var(--surface); stroke-width: 2; stroke: " + (vs[vs.length - 1] >= 0 ? "var(--up)" : "var(--down)")
+      : "fill: " + (vs[vs.length - 1] >= 0 ? "var(--up)" : "var(--down)") }, svg);
+
+    // Buy / sell markers in the strip between the main plot and the bars
+    rows.forEach((r, i) => {
+      const sides = [...new Set(r.trades.map((t) => t.side))];
+      sides.forEach((side, j) => {
+        const cy = PH + GAP / 2, cx = x(i) + (j - (sides.length - 1) / 2) * 14, color = side === "buy" ? "var(--up)" : "var(--down)";
+        el("line", { x1: x(i), x2: cx, y1: y(vs[i]), y2: cy, style: "stroke: " + color + "; stroke-width: 1; opacity: .3" }, svg);
+        el("circle", { cx, cy, r: 6.5, style: "fill: " + color }, svg);
+        const t = el("text", { class: "pnl-mark", x: cx, y: cy, dy: "0.35em", "text-anchor": "middle" }, svg);
+        t.textContent = side === "buy" ? "B" : "S";
+      });
+    });
+
+    // Daily P/L bars
+    const mid = BT + BH / 2, bmax = Math.max(0.01, ...rows.map((r) => Math.abs(r.day)));
+    const bw = Math.max(2, Math.min(14, stepX * 0.6));
+    el("line", { x1: L, x2: R, y1: mid, y2: mid, style: "stroke: var(--line)" }, svg);
+    rows.forEach((r, i) => {
+      const hgt = (Math.abs(r.day) / bmax) * (BH / 2 - 2);
+      if (hgt < 0.5) return;
+      el("rect", { x: x(i) - bw / 2, y: r.day >= 0 ? mid - hgt : mid, width: bw, height: hgt, rx: 1, style: "fill: " + (r.day >= 0 ? "var(--up)" : "var(--down)") + "; opacity: .8" }, svg);
+    });
+    const bl = el("text", { class: "pnl-tick", x: R + 8, y: mid, dy: "0.32em" }, svg);
+    bl.textContent = "当日盈亏";
+
+    // Crosshair, value badge, cursor dot
+    const cross = el("line", { x1: 0, x2: 0, y1: 4, y2: BT + BH, style: "stroke: var(--muted); stroke-dasharray: 3 3; opacity: 0" }, svg);
+    const crossH = el("line", { x1: L, x2: R, y1: 0, y2: 0, style: "stroke: var(--muted); stroke-dasharray: 3 3; opacity: 0" }, svg);
+    const badge = el("g", { style: "opacity: 0" }, svg);
+    el("rect", { x: R + 2, y: -9, width: RW - 4, height: 18, rx: 4, style: "fill: var(--ink)" }, badge);
+    const badgeT = el("text", { class: "pnl-tick", x: R + 8, y: 0, dy: "0.32em", style: "fill: var(--surface)" }, badge);
+    const dot = el("circle", { r: 4.5, style: "opacity: 0" }, svg);
+    pnlLay = { rows, vs, x, y, W, cross, crossH, badge, badgeT, dot, svg, i: rows.length - 1 };
+  }
+
+  function pnlShow(i) {
+    if (!pnlLay) return;
+    const { rows, vs, x, y, W, cross, crossH, badge, badgeT, dot, svg } = pnlLay;
+    i = Math.max(0, Math.min(rows.length - 1, i));
+    pnlLay.i = i;
+    const r = rows[i], v = vs[i], color = v >= 0 ? "var(--up)" : "var(--down)";
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.style.opacity = 1;
+    crossH.setAttribute("y1", y(v)); crossH.setAttribute("y2", y(v)); crossH.style.opacity = 1;
+    badge.setAttribute("transform", "translate(0," + y(v) + ")"); badge.style.opacity = 1;
+    badgeT.textContent = pnlFmt(v);
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(v));
+    dot.setAttribute("style", "opacity: 1; fill: " + color + "; stroke: var(--surface); stroke-width: 2");
+
+    const row = (k, val, cls) => '<div class="r"><span>' + k + '</span><span class="' + (cls || "") + '">' + val + "</span></div>";
+    const prev = i > 0 ? rows[i - 1] : null;
+    let html = '<div class="d">' + esc(r.date) + " 周" + WD[parseD(r.date).getUTCDay()] + (r.live ? " · 最新价（盘中或手动）" : " · 收盘") + "</div>" +
+      row("累计收益", signed(r.total), tone(r.total)) +
+      row("收益率", r.pct == null ? "—" : pct(r.pct * 100), tone(r.total)) +
+      row(r.live ? "较上一收盘" : "当日变动", signed(r.day) + (prev && prev.value > 0 ? " <i>" + pct((r.day / prev.value) * 100) + "</i>" : ""), tone(r.day)) + "<hr>";
+    html += r.bySym.slice().sort((p, q) => q.unreal - p.unreal).map((s) =>
+      row(esc(s.sym) + "<i>" + (r.live ? "现 " : "收 ") + price(s.close, s.ccy) + "</i>", signed(s.unreal), tone(s.unreal))).join("");
+    if (Math.abs(r.realized) >= 0.005) html += row("已实现", signed(r.realized), tone(r.realized));
+    html += r.byFixed.map((f) => row(esc(f.name), signed(f.income), tone(f.income))).join("");
+    html += "<hr>" + row("股票市值", money(r.value)) + row("股票成本", money(r.cost));
+    if (r.byFixed.length) html += row("国债和定存", money(r.fixedValue));
+    if (r.trades.length) {
+      html += "<hr>" + r.trades.map((t) => '<div class="t ' + (t.side === "buy" ? "up" : "down") + '">' + md(t.date) + " " + (t.side === "buy" ? "买入 " : "卖出 ") +
+        esc(t.symbol) + " " + nfQ.format(Number(t.shares) || 0) + " 股 @ " + price(Number(t.price) || 0, tradeCcy(t)) + "</div>").join("");
+    }
+    const tip = $("#pnlTip");
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const box = $("#pnlChart"), rect = svg.getBoundingClientRect(), bw = box.clientWidth, tw = tip.offsetWidth;
+    const px = rect.left - box.getBoundingClientRect().left + (x(i) / W) * rect.width;
+    tip.style.left = Math.max(0, Math.min(bw - tw, px > bw / 2 ? px - tw - 14 : px + 14)) + "px";
+  }
+  function pnlHide() {
+    $("#pnlTip").hidden = true;
+    if (!pnlLay) return;
+    pnlLay.cross.style.opacity = 0; pnlLay.crossH.style.opacity = 0; pnlLay.badge.style.opacity = 0;
+    pnlLay.dot.setAttribute("style", "opacity: 0");
+  }
+  function pnlAt(clientX) {
+    if (!pnlLay) return;
+    const { rows, x, W, svg } = pnlLay;
+    const rect = svg.getBoundingClientRect(), mx = ((clientX - rect.left) * W) / rect.width;
+    let i = 0, best = Infinity;
+    rows.forEach((r, j) => { const dx = Math.abs(x(j) - mx); if (dx < best) { best = dx; i = j; } });
+    pnlShow(i);
+  }
+  $("#pnlChart").addEventListener("pointermove", (e) => { if (e.target.closest("svg")) pnlAt(e.clientX); });
+  $("#pnlChart").addEventListener("pointerdown", (e) => { if (e.target.closest("svg")) pnlAt(e.clientX); });
+  $("#pnlChart").addEventListener("pointerleave", pnlHide);
+  $("#pnlChart").addEventListener("focusin", (e) => { if (pnlLay && e.target === pnlLay.svg) pnlShow(pnlLay.i); });
+  $("#pnlChart").addEventListener("focusout", pnlHide);
+  $("#pnlChart").addEventListener("keydown", (e) => {
+    if (!pnlLay || e.target !== pnlLay.svg) return;
+    const n = pnlLay.rows.length, step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (step) pnlShow(pnlLay.i + step);
+    else if (e.key === "Home") pnlShow(0);
+    else if (e.key === "End") pnlShow(n - 1);
+    else if (e.key === "Escape") { pnlHide(); return; }
+    else return;
+    e.preventDefault();
+  });
+  document.querySelectorAll(".pnl-mode button").forEach((btn) => btn.addEventListener("click", () => {
+    pnlMode = btn.dataset.mode;
+    document.querySelectorAll(".pnl-mode button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+    renderPnl(sortedTrades());
+  }));
+  let resizeT = null;
+  window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => renderPnl(sortedTrades()), 150); });
+
+  // ---------- trade log ----------
+  const logView = { side: "all", sym: "" };
+  function renderLog(list) {
+    const tb = $("#log tbody"), ro = !db || state.canWrite === false, sel = $("#logSym");
+    const syms = [...new Set(list.map((t) => t.symbol))].sort();
+    if (logView.sym && !syms.includes(logView.sym)) logView.sym = "";
+    const opts = '<option value="">全部</option>' + syms.map((s) => '<option value="' + esc(s) + '">' + esc(s) + (nameOf(s) ? " · " + esc(nameOf(s)) : "") + "</option>").join("");
+    if (sel.innerHTML !== opts) sel.innerHTML = opts;
+    sel.value = logView.sym;
+    const rows = list.filter((t) => (logView.side === "all" || t.side === logView.side) && (!logView.sym || t.symbol === logView.sym)).reverse();
+    const sumOf = (arr, side) => arr.filter((t) => t.side === side).reduce((s, t) => s + toUSD((Number(t.shares) || 0) * (Number(t.price) || 0), tradeCcy(t)), 0);
+    const fees = rows.reduce((s, t) => s + toUSD(Number(t.fees) || 0, tradeCcy(t)), 0);
+    $("#logSum").textContent = rows.length
+      ? [rows.length + " 笔", sumOf(rows, "buy") && "买入 " + money(sumOf(rows, "buy")), sumOf(rows, "sell") && "卖出 " + money(sumOf(rows, "sell")), fees >= 0.005 && "费用 " + money(fees)].filter(Boolean).join(" · ") : "";
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="9" class="empty">' + (!state.ready ? "正在读取交易记录…" : list.length ? "没有符合筛选条件的记录。" : "还没有交易记录。点页面顶部的“＋ 记一笔”录入第一笔。") + "</td></tr>";
+      return;
+    }
+    let html = "", month = "";
+    for (const t of rows) {
+      const m = t.date.slice(0, 7);
+      if (m !== month) {
+        month = m;
+        const inM = rows.filter((x) => x.date.slice(0, 7) === m), b = sumOf(inM, "buy"), s = sumOf(inM, "sell");
+        html += '<tr class="mon"><td colspan="9"><b>' + m.slice(0, 4) + " 年 " + Number(m.slice(5)) + " 月</b>" + inM.length + " 笔" +
+          (b ? " · 买入 " + money(b) : "") + (s ? " · 卖出 " + money(s) : "") + "</td></tr>";
+      }
+      const ccy = tradeCcy(t), q = Number(t.shares) || 0, pr = Number(t.price) || 0, f = Number(t.fees) || 0, id = esc(t.id);
+      const chip = t.side === "buy" ? '<span class="chip buy">买入</span>' : '<span class="chip sell">卖出</span>';
+      let acts = "";
+      if (!ro) {
+        acts = state.pendingDelete === t.id
+          ? '<button class="mini danger" type="button" data-act="confirm" data-id="' + id + '">确认删除</button><button class="mini" type="button" data-act="cancel">取消</button>'
+          : '<button class="mini" type="button" data-act="del" data-id="' + id + '">删除</button>';
+      }
+      html += '<tr><td class="num c-date">' + md(t.date) + '</td><td class="c-side">' + chip + "</td>" + symCell(t.symbol) +
+        '<td class="num c-qty">' + nfQ.format(q) + '</td><td class="num c-px">' + price(pr, ccy) + '</td><td class="num c-amt">' + money(q * pr, ccy) + usdCap(q * pr, ccy) +
+        '</td><td class="num c-fee">' + money(f, ccy) + '</td><td class="meta">' + chip + " " + esc(t.date) + " · " + nfQ.format(q) + " 股 × " + price(pr, ccy) +
+        (f ? " · 费用 " + money(f, ccy) : "") + '</td><td class="note">' + esc(t.note || "") + '</td><td class="c-act"><div class="acts">' + acts + "</div></td></tr>";
+    }
+    tb.innerHTML = html;
+  }
+  document.querySelectorAll('input[name="lside"]').forEach((r) => r.addEventListener("change", () => { logView.side = r.value; renderLog(sortedTrades()); }));
+  $("#logSym").addEventListener("change", (e) => { logView.sym = e.target.value; renderLog(sortedTrades()); });
+
+  let mySyms = [];
+  function renderSymList(c) { mySyms = c.syms.map((s) => s.symbol); }
+
+  function render() {
+    const list = sortedTrades();
+    const c = compute(list);
+    renderSummary(c);
+    renderMix(c);
+    renderPnl(list);
+    renderHoldings(c);
+    renderFixed();
+    renderLog(list);
+    renderSymList(c);
+  }
+
+  // ---------- ticker search ----------
+  function entryFor(code) {
+    return { c: code, zh: nameOf(code), en: EN[code] || (state.quotes[code] && state.quotes[code].name) || "" };
+  }
+  function searchSyms(raw) {
+    const q = String(raw || "").trim();
+    const pool = mySyms.filter((s) => !ZH[s]).map(entryFor).concat(LIST);
+    if (!q) {
+      const seen = new Set();
+      return mySyms.concat(DEFAULT_PICKS).filter((s) => !seen.has(s) && seen.add(s)).slice(0, 8).map(entryFor);
+    }
+    const qU = q.toUpperCase(), qL = q.toLowerCase(), qN = normSym(q);
+    const scored = [];
+    pool.forEach((x, i) => {
+      let s = -1;
+      if (x.c === qU || (qN && x.c === qN)) s = 0;
+      else if (x.c.startsWith(qU)) s = 1;
+      else if (x.zh && x.zh.includes(q)) s = 2;
+      else if (x.en && x.en.toLowerCase().includes(qL)) s = 3;
+      else if (x.c.includes(qU)) s = 4;
+      if (s >= 0) scored.push([s, i, x]);
+    });
+    scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const out = scored.slice(0, 8).map((r) => r[2]);
+    if (qN && q.length <= 6 && !out.some((x) => x.c === qN)) out.push({ c: qN, zh: "直接使用这个代码", en: isHK(qN) ? "港股代码，刷新数据后获取价格" : "美股代码，刷新数据后获取价格", custom: true });
+    return out;
+  }
+
+  const symIn = $("#f-sym"), symBox = $("#symBox");
+  let symItems = [], symActive = -1;
+  function openSym() {
+    symItems = searchSyms(symIn.value);
+    symActive = -1;
+    if (!symItems.length) { closeSym(); return; }
+    symBox.innerHTML = symItems.map((x, i) =>
+      '<li role="option" id="sym-opt-' + i + '" data-i="' + i + '" aria-selected="false"' + (x.custom ? ' class="custom"' : "") + '>' +
+      '<span class="c">' + esc(x.c) + '</span><span class="n">' + esc(x.zh || x.en || "") + "</span>" +
+      (x.en && x.zh ? '<span class="e">' + esc(x.en) + "</span>" : "") + "</li>").join("");
+    symBox.hidden = false;
+    symIn.setAttribute("aria-expanded", "true");
+    symIn.removeAttribute("aria-activedescendant");
+  }
+  function closeSym() {
+    symBox.hidden = true;
+    symIn.setAttribute("aria-expanded", "false");
+    symIn.removeAttribute("aria-activedescendant");
+    symActive = -1;
+  }
+  function moveSym(d) {
+    if (symBox.hidden) { openSym(); return; }
+    if (!symItems.length) return;
+    symActive = (symActive + d + symItems.length) % symItems.length;
+    symBox.querySelectorAll("li").forEach((li, i) => li.setAttribute("aria-selected", i === symActive ? "true" : "false"));
+    const li = document.getElementById("sym-opt-" + symActive);
+    if (li) { symIn.setAttribute("aria-activedescendant", li.id); li.scrollIntoView({ block: "nearest" }); }
+  }
+  function pickSym(i) {
+    const x = symItems[i];
+    if (!x) return;
+    symIn.value = x.c;
+    closeSym();
+    updateSymHint();
+  }
+  symIn.addEventListener("input", () => { openSym(); updateSymHint(); });
+  symIn.addEventListener("focus", () => { symIn.select(); openSym(); });
+  symIn.addEventListener("blur", () => setTimeout(closeSym, 120));
+  symIn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); moveSym(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); moveSym(-1); }
+    else if (e.key === "Escape") { closeSym(); }
+    else if (e.key === "Enter" && !symBox.hidden && symActive >= 0) { e.preventDefault(); pickSym(symActive); }
+  });
+  symBox.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (!li) return;
+    e.preventDefault();
+    pickSym(Number(li.dataset.i));
+  });
+
+  // Turn what was typed (a code, or a name with one clear match) into a code.
+  function resolveSym(raw) {
+    const direct = normSym(raw);
+    if (direct && (ZH[direct] || EN[direct] || mySyms.includes(direct))) return direct;
+    const q = String(raw || "").trim();
+    const hits = searchSyms(raw).filter((x) => !x.custom);
+    const exact = hits.find((x) => x.zh === q || (x.en && x.en.toLowerCase() === q.toLowerCase()));
+    if (exact) return exact.c;
+    if (direct) return direct;
+    return hits.length === 1 ? hits[0].c : "";
+  }
+
+  // ---------- form helpers ----------
+  function updateSymHint() {
+    const raw = symIn.value;
+    const sym = resolveSym(raw);
+    const hk = sym && isHK(sym);
+    const unit = hk ? "港元" : "美元";
+    $("#f-price-lbl").textContent = "成交价（" + unit + "）";
+    $("#f-fee-lbl").textContent = "费用（" + unit + "）";
+    const sub = $("#f-sym-sub");
+    if (!raw.trim()) sub.textContent = "可搜代码、中文名或英文名。列表里没有的代码也能直接填。";
+    else if (!sym) sub.textContent = "没找到。美股填代码如 AAPL、BRK.B，港股填数字如 0700，也可以从下拉里选。";
+    else sub.textContent = (hk ? "港股 " : "美股 ") + sym + (nameOf(sym) ? " · " + nameOf(sym) : (EN[sym] ? " · " + EN[sym] : ""));
+  }
+
+  // ---------- writes ----------
+  let cfgChain = Promise.resolve();
+  function saveConfig() {
+    if (!db || state.canWrite === false) return;
+    const body = {
+      fx: state.fx, prices: Object.assign({}, state.prices),
+      quotes: JSON.parse(JSON.stringify(state.quotes)), updatedAt: state.updatedAt, source: state.source,
+    };
+    cfgChain = cfgChain.then(() => db.doc("config/main").set(body)).catch((err) => setStatus(errText(err), "err"));
+  }
+
+  $("#holdings").addEventListener("change", (e) => {
+    const el = e.target;
+    if (!el.classList || !el.classList.contains("px")) return;
+    const v = parseFloat(el.value);
+    if (!(v >= 0)) return;
+    const sym = el.dataset.sym;
+    state.prices[sym] = v;
+    state.quotes[sym] = Object.assign({}, state.quotes[sym] || {}, { date: todayHK(), source: "手动" });
+    saveConfig();
+    render();
+  });
+
+
+  $("#tradeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!db) { formMsg("还连不上数据库，暂时不能保存。", "err"); return; }
+    const date = $("#f-date").value;
+    const side = document.querySelector('input[name="side"]:checked').value;
+    const symbol = resolveSym(symIn.value);
+    const shares = parseFloat($("#f-qty").value);
+    const px = parseFloat($("#f-price").value);
+    const feeRaw = $("#f-fee").value.trim();
+    const fees = feeRaw === "" ? 0 : parseFloat(feeRaw);
+    const note = $("#f-note").value.trim().slice(0, 120);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { formMsg("请选择成交日期。", "err"); return; }
+    if (!symbol) { formMsg("认不出这个股票。美股填 AAPL、BRK.B 这样的代码，港股填 0700 这样的数字，或者从下拉列表里选。", "err"); return; }
+    symIn.value = symbol;
+    if (!(shares > 0)) { formMsg("股数要大于 0。", "err"); return; }
+    const ccy = ccyOf(symbol);
+    if (!(px > 0)) { formMsg("成交价要大于 0，单位是" + (ccy === "HKD" ? "港元" : "美元") + "。", "err"); return; }
+    if (!(fees >= 0)) { formMsg("费用不能是负数，没有就填 0。", "err"); return; }
+    const btn = $("#saveBtn");
+    btn.disabled = true;
+    try {
+      await db.collection("trades").add({
+        date, side, symbol, market: isHK(symbol) ? "HK" : "US", currency: ccy,
+        shares, price: px, fees, note, createdAt: new Date().toISOString(),
+      });
+      const fresh = !(Number(state.prices[symbol]) > 0);
+      formMsg("已保存：" + md(date) + " " + (side === "buy" ? "买入" : "卖出") + " " + symbol + " " + nfQ.format(shares) + " 股。" +
+        (fresh ? "点“刷新数据”后这只股票会有价格，也可以先在持仓表里手动填。" : ""), "ok");
+      $("#f-qty").value = ""; $("#f-price").value = ""; $("#f-fee").value = "0"; $("#f-note").value = "";
+    } catch (err) {
+      formMsg(errText(err), "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("#log").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === "del") { state.pendingDelete = b.dataset.id; render(); return; }
+    if (act === "cancel") { state.pendingDelete = null; render(); return; }
+    if (act === "confirm" && db) {
+      b.disabled = true;
+      try {
+        await db.doc("trades/" + b.dataset.id).delete();
+        state.pendingDelete = null;
+        setStatus("已删除一笔记录。", "ok");
+      } catch (err) {
+        setStatus(errText(err), "err");
+        render();
+      }
+    }
+  });
+
+  // Treasuries and deposits: kind switch, save, reference price, delete.
+  document.querySelectorAll('input[name="ekind"]').forEach((r) => r.addEventListener("change", () => {
+    const kind = document.querySelector('input[name="ekind"]:checked').value, bond = kind === "bond";
+    $("#tradeForm").hidden = kind !== "stk"; $("#fixForm").hidden = kind === "stk";
+    $("#fs-bond").hidden = !bond; $("#fs-dep").hidden = bond;
+    $("#x-name").placeholder = bond ? "例如：美国国债 4.25% 2029/6/30" : "例如：美元定期 12 个月";
+  }));
+  const fixMsg = (t, k) => { const el = $("#fixMsg"); el.textContent = t; el.dataset.kind = k || ""; };
+  $("#fixForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!db) { fixMsg("还连不上数据库，暂时不能保存。", "err"); return; }
+    const bond = $("#ek-bond").checked, val = (id) => parseFloat($(id).value), okD = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const note = $("#x-note").value.trim().slice(0, 120);
+    let doc;
+    if (bond) {
+      const face = val("#b-face"), price = val("#b-price"), coupon = val("#b-cpn"), trade = $("#b-trade").value, maturity = $("#b-end").value;
+      if (!(face > 0) || !(price > 0) || !(coupon >= 0)) { fixMsg("面值、成交价格（%）和票面利率都要填。", "err"); return; }
+      if (!okD(trade) || !okD(maturity) || maturity <= trade) { fixMsg("请填成交日期和到期日，到期日要晚于成交日期。", "err"); return; }
+      const settle = addDays(trade, 1);
+      doc = { kind: "bond", currency: "USD", face, price, coupon, freq: 2, tradeDate: trade, settle, maturity, isin: $("#b-isin").value.trim().toUpperCase().slice(0, 12) };
+      const accRaw = $("#b-acc").value.trim();
+      if (accRaw !== "") doc.accruedPaid = parseFloat(accRaw);
+      else { const cs = coupons(doc); doc.accruedPaid = r2((face * coupon / 200) * dayDiff(cs[0], settle) / dayDiff(cs[0], cs[1])); }
+      if (!(doc.accruedPaid >= 0)) { fixMsg("应计利息不能是负数。", "err"); return; }
+      doc.name = $("#x-name").value.trim().slice(0, 60) || "美国国债 " + coupon + "% " + maturity.replace(/-0?/g, "/");
+    } else {
+      const principal = val("#d-amt"), rate = val("#d-rate"), start = $("#d-start").value, maturity = $("#d-end").value, currency = $("#d-ccy").value;
+      if (!(principal > 0) || !(rate >= 0)) { fixMsg("本金和年利率都要填。", "err"); return; }
+      if (!okD(start) || !okD(maturity) || maturity <= start) { fixMsg("请填存款日期和到期日，到期日要晚于存款日期。", "err"); return; }
+      const intRaw = $("#d-int").value.trim();
+      const interest = intRaw !== "" ? parseFloat(intRaw) : r2(principal * rate / 100 * dayDiff(start, maturity) / (currency === "HKD" ? 365 : 360));
+      if (!(interest >= 0)) { fixMsg("到期利息不能是负数。", "err"); return; }
+      doc = { kind: "deposit", currency, principal, rate, start, maturity, interest, autoRenew: false,
+        name: $("#x-name").value.trim().slice(0, 60) || (currency === "HKD" ? "港元" : "美元") + "定期" };
+    }
+    doc.note = note; doc.createdAt = new Date().toISOString();
+    const btn = $("#fixSave");
+    btn.disabled = true;
+    try {
+      await db.collection("fixed").add(doc);
+      fixMsg("已保存：" + doc.name + "。", "ok");
+      $("#fixForm").reset();
+    } catch (err) {
+      fixMsg(errText(err), "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $("#fixed").addEventListener("change", async (e) => {
+    const el = e.target;
+    if (!el.classList || !el.classList.contains("fx-mark") || !db) return;
+    const raw = el.value.trim(), v = parseFloat(raw);
+    if (raw !== "" && !(v > 50 && v < 150)) { setStatus("参考卖出价按面值的百分比填，例如 98.40。", "err"); render(); return; }
+    try {
+      await db.doc("fixed/" + el.dataset.id).update(raw === "" ? { markPrice: null, markDate: null } : { markPrice: v, markDate: todayHK() });
+    } catch (err) { setStatus(errText(err), "err"); render(); }
+  });
+  $("#fixed").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-fact]");
+    if (!b) return;
+    const act = b.dataset.fact;
+    if (act === "del") { state.pendingFix = b.dataset.id; render(); return; }
+    if (act === "cancel") { state.pendingFix = null; render(); return; }
+    if (act === "confirm" && db) {
+      b.disabled = true;
+      try {
+        await db.doc("fixed/" + b.dataset.id).delete();
+        state.pendingFix = null;
+        setStatus("已删除一条国债或定存记录。", "ok");
+      } catch (err) { setStatus(errText(err), "err"); render(); }
+    }
+  });
+
+  function readOnly(msg, kind) {
+    $("#entryBtn").hidden = true;
+    setStatus(msg, kind);
+    render();
+  }
+
+  // Entry dialog: the header button opens it; ✕, Escape or a click outside closes it.
+  const entryDlg = $("#entry");
+  $("#entryBtn").addEventListener("click", () => entryDlg.showModal());
+  $("#entryClose").addEventListener("click", () => entryDlg.close());
+  entryDlg.addEventListener("click", (e) => {
+    const r = entryDlg.getBoundingClientRect();
+    if (e.target === entryDlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) entryDlg.close();
+  });
+
+  // "?" help cards: one open at a time; a click elsewhere or Escape closes it.
+  const helps = [...document.querySelectorAll(".help")];
+  helps.forEach((d) => d.addEventListener("toggle", () => { if (d.open) helps.forEach((o) => { if (o !== d) o.open = false; }); }));
+  document.addEventListener("click", (e) => helps.forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const d = helps.find((x) => x.open);
+    if (d) { d.open = false; d.querySelector("summary").focus(); }
+  });
+
+  // ---------- start ----------
+  $("#f-date").value = todayHK();
+  updateSymHint();
+  render();
+
+  async function init() {
+    const cl = window.claude;
+    if (!cl || typeof cl.use !== "function") { readOnly("页面没加载完整，刷新一下试试。", "err"); return; }
+    const [d, u] = await Promise.all([cl.use("db").catch(() => null), cl.use("user").catch(() => null)]);
+    if (u) { try { state.canWrite = await u.canEdit(); } catch (e) { state.canWrite = null; } }
+    if (!d) { readOnly("连不上服务器，刷新页面试试。", "err"); return; }
+    db = d;
+    if (state.canWrite === false) $("#entryBtn").hidden = true;
+
+    db.collection("trades").onSnapshot(applyTrades, (err) => setStatus("读取交易记录出错（" + (err && err.code) + "），刷新页面试试。", "err"));
+    db.collection("history").onSnapshot(applyHistory, () => { state.histReady = true; render(); });
+    db.doc("config/main").onSnapshot(applyConfig, () => {});
+    db.collection("fixed").onSnapshot(applyFixed, () => {});
+  }
+
+  function applyFixed(snap) {
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+    state.fixed = snap.docs.map((doc) => {
+      const x = doc.data() || {};
+      return {
+        id: doc.id, kind: x.kind === "bond" ? "bond" : "deposit", name: String(x.name || (x.kind === "bond" ? "国债" : "定期存款")),
+        currency: x.currency === "HKD" ? "HKD" : "USD", note: x.note || "", isin: x.isin || "",
+        principal: num(x.principal), rate: num(x.rate), start: x.start, interest: num(x.interest),
+        face: num(x.face), price: num(x.price), coupon: num(x.coupon), freq: num(x.freq) || 2, settle: x.settle,
+        accruedPaid: num(x.accruedPaid) || 0, markPrice: num(x.markPrice), markDate: x.markDate || "", maturity: x.maturity,
+      };
+    }).filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.maturity) && /^\d{4}-\d{2}-\d{2}$/.test(fixedStart(f) || "") &&
+      (f.kind === "bond" ? f.face > 0 && f.price > 0 && f.coupon >= 0 : f.principal > 0 && f.interest >= 0));
+    if (state.pendingFix && !state.fixed.some((f) => f.id === state.pendingFix)) state.pendingFix = null;
+    render();
+  }
+
+  function applyTrades(snap) {
+    state.trades = snap.docs.map((doc) => Object.assign({ id: doc.id }, doc.data()));
+    if (state.pendingDelete && !state.trades.some((t) => t.id === state.pendingDelete)) state.pendingDelete = null;
+    state.ready = true;
+    if (state.canWrite === false) setStatus("你只有查看权限。", "");
+    else setStatus(state.trades.length ? "已同步，共 " + state.trades.length + " 笔记录。" : "已连接，还没有记录。", "ok");
+    render();
+  }
+  function applyHistory(snap) {
+    const hist = {};
+    snap.docs.forEach((doc) => { const d = doc.data() || {}; hist[doc.id] = Object.assign({}, d.closes || {}); });
+    state.history = hist;
+    state.histReady = true;
+    render();
+  }
+  function applyConfig(snap) {
+    if (!snap.exists) return;
+    const c = snap.data() || {};
+    const fx = Number(c.fx);
+    if (fx >= 5 && fx <= 10) state.fx = r2(fx);
+    state.prices = Object.assign({}, c.prices || {});
+    state.quotes = JSON.parse(JSON.stringify(c.quotes || {}));
+    state.updatedAt = typeof c.updatedAt === "string" ? c.updatedAt : "";
+    state.source = typeof c.source === "string" ? c.source : "";
+    render();
+    updateSymHint();
+  }
+
+  // Asks the server to fetch prices, closes and rates, then reads everything again.
+  $("#refreshBtn").addEventListener("click", async () => {
+    const btn = $("#refreshBtn");
+    if (!db) { setStatus("连不上服务器，刷新页面试试。", "err"); return; }
+    btn.disabled = true;
+    setStatus("正在从腾讯财经、新浪财经取最新价格和汇率…", "");
+    try {
+      const r = await window.ledgerApi("POST", "/api/refresh");
+      const [t, hi, c, fx] = await Promise.all([db.collection("trades").get(), db.collection("history").get(), db.doc("config/main").get(), db.collection("fixed").get()]);
+      applyTrades(t); applyHistory(hi); applyConfig(c); applyFixed(fx);
+      const errs = Object.keys(r.errors || {}), kept = r.kept_manual || [];
+      setStatus("已更新 " + Object.keys(r.updated || {}).length + " 只股票的价格和汇率（" + stamp(state.updatedAt) + "，香港时间）" +
+        (kept.length ? "；" + kept.join("、") + " 保留你手动填的价格" : "") + (errs.length ? "；没取到：" + errs.join("、") : "") + "。", errs.length ? "err" : "ok");
+    } catch (err) {
+      setStatus(errText(err).replace("保存", "刷新"), "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $("#logoutBtn").addEventListener("click", async () => {
+    try { await window.ledgerApi("POST", "/api/logout"); } finally { location.reload(); }
+  });
+  init();
+})();
+</script>
+
+</body>
+</html>

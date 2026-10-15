@@ -1,0 +1,12 @@
+services:
+  ledger:
+    build: .
+    restart: unless-stopped
+    # Only reachable from this machine; put nginx or Caddy with HTTPS in front of it.
+    ports:
+      - "127.0.0.1:5090:5090"
+    volumes:
+      - ledger-data:/app/data
+
+volumes:
+  ledger-data:

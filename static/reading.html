@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>投资读书清单</title>
+<style>
+/* Layout: one 760px column; a progress strip, then the books grouped by stage, each a ruled row with a
+   check box, details, a Douban link and a fold-out note field */
+:root {
+  --bg: #EDF0F3; --surface: #FFFFFF; --ink: #16202A; --muted: #5D6A77; --line: #D3DAE1;
+  --accent: #2B5784; --accent-soft: #E2EAF3; --on-accent: #FFFFFF; --up: #1C7F4F; --warn: #9A6400;
+  --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540; --accent: #82ABDA; --accent-soft: #1E2D3F; --on-accent: #0E1620; --up: #4DC28A; --warn: #E0A84A; color-scheme: dark; }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; display: grid; gap: 28px; }
+h1 { margin: 0 0 6px; font-size: 30px; font-weight: 600; line-height: 1.25; }
+h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.lede, .hint { margin: 0; color: var(--muted); font-size: 13px; }
+.back { display: inline-block; margin-top: 10px; color: var(--accent); font-size: 13px; text-decoration: none; }
+.back:hover { text-decoration: underline; }
+.prog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.prog div { background: var(--surface); padding: 14px 18px; display: grid; gap: 6px; }
+.prog .k { font-size: 13px; color: var(--muted); }
+.prog .v { font-size: 22px; font-weight: 600; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+section { display: grid; gap: 10px; }
+.list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.book { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.book:last-child { border-bottom: 0; }
+.book input[type="checkbox"] { width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--up); cursor: pointer; }
+.title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.title b { font-size: 16px; font-weight: 600; }
+.title .au { color: var(--muted); font-size: 13px; }
+.tag { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.lv { font-size: 12px; color: var(--warn); letter-spacing: 1px; }
+.why { grid-column: 2; margin: 0; font-size: 14px; color: var(--muted); }
+.meta { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; }
+.meta a { color: var(--accent); text-decoration: none; }
+.meta a:hover { text-decoration: underline; }
+.meta .when { color: var(--up); }
+.meta button { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; }
+.note { grid-column: 2; display: grid; gap: 4px; }
+.note textarea { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 84px; resize: vertical; }
+.note .st { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+.book.done b { text-decoration: line-through; text-decoration-color: var(--muted); }
+input:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tips { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+#msg { margin: 0; font-size: 13px; color: var(--warn); min-height: 1.2em; }
+[hidden] { display: none !important; }
+/* Phones: 16px note box (iPhone zooms in on smaller ones) and taller tap targets for links and buttons */
+@media (max-width: 680px) {
+  .note textarea { font-size: 16px; }
+  .meta a, .meta button, .back { padding: 6px 0; }
+  .book { padding: 12px 14px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>投资读书清单</h1>
+    <p class="lede">从浅到深 12 本书。读完一本就勾上，再写三句话：学到了什么、哪里不同意、打算怎么用。进度保存在你的服务器上，手机和电脑同步。</p>
+    <a class="back" href="/">← 回到美股持仓账本</a>
+    <p id="msg" role="status"></p>
+  </header>
+
+  <div class="prog">
+    <div><span class="k">读完</span><span class="v" id="pAll">0 / 12</span><div class="bar"><span id="bAll"></span></div></div>
+    <div><span class="k">必读（前 5 本）</span><span class="v" id="pMust">0 / 5</span><div class="bar"><span id="bMust"></span></div></div>
+  </div>
+
+  <div id="stages"></div>
+
+  <section aria-labelledby="tips-h">
+    <h2 id="tips-h">读书小建议</h2>
+    <ul class="tips">
+      <li>一次只读一本，按顺序来。前 5 本读完，基础就很扎实了。</li>
+      <li>边读边对照账本：读到“回撤”就看收益走势的最大回撤，读到“费率”就算 VOO 和 QQQM 长期差多少。</li>
+      <li>遇到不懂的概念，用你自己的持仓举个例子算一算，比只看定义好懂得多。</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  // The books; ids are stable keys for the saved progress, so don't rename them.
+  const STAGES = [
+    { name: "第一阶段：理财观念", hint: "入门，必读", books: [
+      { id: "psychology-of-money", t: "金钱心理学", a: "摩根·豪泽尔", must: true, lv: 1, why: "人在钱面前的心理和行为：为什么聪明人也会在投资上犯错，怎样“不出局”。" },
+      { id: "money-dog", t: "小狗钱钱", a: "博多·舍费尔", must: true, lv: 1, why: "储蓄、复利、应急钱这些最基本的概念，很浅，一两天读完。" },
+    ] },
+    { name: "第二阶段：指数投资", hint: "理解你买的 VOO 和 QQQM，必读", books: [
+      { id: "random-walk", t: "漫步华尔街", a: "伯顿·马尔基尔", must: true, lv: 2, why: "股市怎么运作，为什么大多数人和基金长期跑不赢指数。" },
+      { id: "little-book-common-sense", t: "长赢投资", a: "约翰·博格", must: true, lv: 2, why: "指数基金之父、先锋集团创始人写的，VOO 背后就是这套理念。" },
+      { id: "index-fund-guide", t: "指数基金投资指南", a: "银行螺丝钉", must: true, lv: 2, why: "宽基、行业、红利各类指数讲得很清楚，A 股和港股例子多。" },
+    ] },
+    { name: "第三阶段：风险和投资思维", hint: "选读两三本", books: [
+      { id: "most-important-thing", t: "投资最重要的事", a: "霍华德·马克斯", lv: 3, why: "风险、市场周期和逆向思维，帮你理解为什么会大涨大跌。" },
+      { id: "one-up-on-wall-street", t: "彼得·林奇的成功投资", a: "彼得·林奇", lv: 2, why: "普通人怎么从生活中发现好公司，写得生动。" },
+      { id: "buffett-letters", t: "巴菲特致股东的信", a: "劳伦斯·坎宁安 编", lv: 3, why: "按主题整理的巴菲特信件：企业价值、管理层和长期持有。" },
+      { id: "irrational-exuberance", t: "非理性繁荣", a: "罗伯特·席勒", lv: 3, why: "诺贝尔奖得主写泡沫是怎么形成的，适合在市场很热时读。" },
+    ] },
+    { name: "第四阶段：看懂公司", hint: "想研究个股再读", books: [
+      { id: "financial-statements-story", t: "财报就像一本故事书", a: "刘顺仁", lv: 2, why: "用故事讲三张财务报表，财报入门最好读的一本。" },
+      { id: "intelligent-investor", t: "聪明的投资者", a: "本杰明·格雷厄姆", lv: 4, why: "价值投资的源头。选有杰森·兹威格点评的版本，先读点评。" },
+      { id: "poor-charlies-almanack", t: "穷查理宝典", a: "彼得·考夫曼 编", lv: 4, why: "芒格的思维方式，跨学科、讲决策，适合慢慢读。" },
+    ] },
+  ];
+  const ALL = STAGES.flatMap((s) => s.books);
+  const $ = (s) => document.querySelector(s);
+  const H = { "Content-Type": "application/json", "X-Requested-With": "ledger" };
+  async function api(method, url, body) {
+    const r = await fetch(url, { method, headers: H, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+    if (r.status === 401) { location.reload(); throw new Error("请先登录"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    return j;
+  }
+  let saved = {};
+  const md = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : (d.getMonth() + 1) + "/" + d.getDate(); };
+
+  function render() {
+    const done = ALL.filter((b) => saved[b.id] && saved[b.id].done), must = ALL.filter((b) => b.must);
+    const mustDone = must.filter((b) => saved[b.id] && saved[b.id].done).length;
+    $("#pAll").textContent = done.length + " / " + ALL.length;
+    $("#pMust").textContent = mustDone + " / " + must.length;
+    $("#bAll").style.width = (done.length / ALL.length) * 100 + "%";
+    $("#bMust").style.width = (mustDone / must.length) * 100 + "%";
+    document.querySelectorAll(".book").forEach((li) => {
+      const s = saved[li.dataset.id] || {};
+      li.classList.toggle("done", !!s.done);
+      li.querySelector("input").checked = !!s.done;
+      li.querySelector(".when").textContent = s.done && s.doneAt ? md(s.doneAt) + " 读完" : "";
+      const ta = li.querySelector("textarea");
+      if (document.activeElement !== ta) ta.value = s.note || "";
+      li.querySelector(".nb").textContent = s.note ? "看笔记" : "写笔记";
+    });
+  }
+
+  function build() {
+    $("#stages").innerHTML = STAGES.map((st, i) => '<section aria-labelledby="st' + i + '"><div><h2 id="st' + i + '">' + st.name + '</h2><p class="hint">' + st.hint + '</p></div><ol class="list">' +
+      st.books.map((b) => '<li class="book" data-id="' + b.id + '"><input type="checkbox" id="cb-' + b.id + '" aria-describedby="why-' + b.id + '">' +
+        '<label class="title" for="cb-' + b.id + '"><b>《' + b.t + '》</b><span class="au">' + b.a + '</span>' + (b.must ? '<span class="tag">必读</span>' : "") +
+        '<span class="lv" aria-label="难度 ' + b.lv + ' 星">' + "★".repeat(b.lv) + "</span></label>" +
+        '<p class="why" id="why-' + b.id + '">' + b.why + "</p>" +
+        '<div class="meta"><a href="https://search.douban.com/book/subject_search?search_text=' + encodeURIComponent(b.t) + '" target="_blank" rel="noopener">豆瓣看书评和购买渠道 ↗</a>' +
+        '<button type="button" class="nb" aria-expanded="false">写笔记</button><span class="when"></span></div>' +
+        '<div class="note" hidden><textarea aria-label="《' + b.t + '》读书笔记" maxlength="2000" placeholder="学到了什么？哪里不同意？打算怎么用？"></textarea><span class="st"></span></div></li>').join("") +
+      "</ol></section>").join("");
+  }
+
+  async function save(id, patch, statusEl) {
+    const next = Object.assign({}, saved[id] || {}, patch);
+    saved[id] = next;
+    render();
+    try {
+      await api("PUT", "/api/d/reading/" + encodeURIComponent(id), next);
+      if (statusEl) statusEl.textContent = "已保存";
+      $("#msg").textContent = "";
+    } catch (e) {
+      $("#msg").textContent = "没保存上：" + e.message + "。刷新页面后再试。";
+    }
+  }
+
+  build();
+  document.addEventListener("change", (e) => {
+    const cb = e.target.closest('.book input[type="checkbox"]');
+    if (!cb) return;
+    const id = cb.closest(".book").dataset.id;
+    save(id, cb.checked ? { done: true, doneAt: new Date().toISOString() } : { done: false, doneAt: null });
+  });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".nb");
+    if (!b) return;
+    const note = b.closest(".book").querySelector(".note"), open = note.hidden;
+    note.hidden = !open;
+    b.setAttribute("aria-expanded", String(open));
+    if (open) note.querySelector("textarea").focus();
+  });
+  document.addEventListener("focusout", (e) => {
+    const ta = e.target.closest(".note textarea");
+    if (!ta) return;
+    const li = ta.closest(".book"), id = li.dataset.id, v = ta.value.trim();
+    if (v === ((saved[id] || {}).note || "")) return;
+    li.querySelector(".st").textContent = "保存中…";
+    save(id, { note: v }, li.querySelector(".st"));
+  });
+
+  api("GET", "/api/c/reading").then((j) => {
+    saved = Object.fromEntries(j.docs.map((d) => [d.id, d.data || {}]));
+    render();
+  }).catch((e) => { $("#msg").textContent = "读取进度失败：" + e.message; });
+})();
+</script>
+</body>
+</html>

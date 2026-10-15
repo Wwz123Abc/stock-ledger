@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>美股持仓账本</title>
+<style>
+/* Layout: one centred card with the password form; a setup code field appears only before a password exists */
+:root {
+  --bg: #EDF0F3; --surface: #FFFFFF; --ink: #16202A; --muted: #5D6A77; --line: #D3DAE1;
+  --accent: #2B5784; --on-accent: #FFFFFF; --warn: #9A6400;
+  --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540; --accent: #82ABDA; --on-accent: #0E1620; --warn: #E0A84A; color-scheme: dark; }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+main { width: min(100%, 360px); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 28px 24px; display: grid; gap: 16px; }
+h1 { margin: 0; font-size: 24px; font-weight: 600; }
+p { margin: 0; color: var(--muted); font-size: 13px; }
+label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button { font: inherit; font-weight: 500; border-radius: 8px; padding: 10px 16px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+button:disabled { opacity: .6; cursor: default; }
+#msg { min-height: 1.4em; color: var(--warn); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>美股持仓账本</h1>
+  <p id="lede">输入密码登录。</p>
+  <form id="f" novalidate>
+    <div style="display: grid; gap: 14px">
+      <label id="codeRow" hidden>设置码<input id="code" autocomplete="one-time-code" inputmode="text" spellcheck="false"></label>
+      <label>密码<input id="pw" type="password" autocomplete="current-password" required></label>
+      <label id="pw2Row" hidden>再输入一次密码<input id="pw2" type="password" autocomplete="new-password"></label>
+      <button type="submit" id="go">登录</button>
+      <p id="msg" role="status"></p>
+    </div>
+  </form>
+</main>
+<script>
+(async () => {
+  const $ = (s) => document.querySelector(s);
+  const H = { "Content-Type": "application/json", "X-Requested-With": "ledger" };
+  let setup = false;
+  try {
+    const a = await (await fetch("/api/auth", { credentials: "same-origin" })).json();
+    if (a.authed) { location.reload(); return; }
+    setup = a.setup;
+  } catch (e) { $("#msg").textContent = "连不上服务器，稍后再试。"; }
+  // The session cookie is Secure: browsers only keep it over HTTPS (or on localhost).
+  if (!window.isSecureContext) {
+    $("#msg").textContent = "登录需要 HTTPS：请用 https:// 地址打开（在服务器本机测试可以用 http://localhost）。";
+    $("#go").disabled = true;
+    return;
+  }
+  if (setup) {
+    $("#lede").textContent = "第一次使用：输入设置码（在服务器的 data/setup-code.txt 里），再给自己设一个密码（至少 8 位）。";
+    $("#codeRow").hidden = false; $("#pw2Row").hidden = false;
+    $("#pw").autocomplete = "new-password";
+    $("#go").textContent = "设置密码并进入";
+  }
+  $("#f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = $("#pw").value;
+    if (!pw) { $("#msg").textContent = "请输入密码。"; return; }
+    if (setup && pw.length < 8) { $("#msg").textContent = "密码至少 8 位。"; return; }
+    if (setup && pw !== $("#pw2").value) { $("#msg").textContent = "两次输入的密码不一样。"; return; }
+    $("#go").disabled = true; $("#msg").textContent = "";
+    try {
+      const body = setup ? { code: $("#code").value, password: pw } : { password: pw };
+      const r = await fetch(setup ? "/api/setup" : "/api/login", { method: "POST", headers: H, credentials: "same-origin", body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { location.reload(); return; }
+      $("#msg").textContent = j.error || "没成功，稍后再试。";
+    } catch (err) {
+      $("#msg").textContent = "连不上服务器，稍后再试。";
+    }
+    $("#go").disabled = false;
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+# Daily database backup at 03:30 (keeps the latest 30 copies in /opt/stock-ledger/data/backups)
+30 3 * * * stockledger /usr/bin/python3 /opt/stock-ledger/app.py backup >/dev/null 2>&1
