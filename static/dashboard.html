@@ -763,7 +763,7 @@ dash.calc("weights", {
       const errs = Object.keys(r.errors || {});
       msg.textContent = "已更新 " + Object.keys(r.updated || {}).length + " 只股票的价格和日 K 线" + (errs.length ? "；没取到：" + errs.join("、") : "") + "。";
     } catch (e) {
-      msg.textContent = "刷新没成功，过一会儿再试，或重新打开这个页面。";
+      msg.textContent = e && /频繁|刚刷新过|正忙/.test(e.message) ? e.message : "刷新没成功，过一会儿再试，或重新打开这个页面。";
     } finally {
       btn.disabled = false;
     }

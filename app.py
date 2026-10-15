@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 """美股持仓账本 — self-hosted server.
 
-Standard library only (Python 3.10+). Serves the ledger pages, keeps their data in SQLite as small JSON
-documents grouped in collections, and refreshes prices,
-daily closes and exchange rates from Tencent Finance (quotes, daily bars) and Sina Finance (FX).
+Standard library only (Python 3.10+). Serves the ledger pages to registered accounts, keeps each account's
+records in SQLite as small JSON documents grouped in collections, and refreshes prices, daily closes and
+exchange rates from Tencent Finance (quotes, daily bars) and Sina Finance (FX, gold). Market data (closes,
+daily bars, gold, USD/CNY) is shared by everyone; trades, Treasuries and deposits, settings and reading
+notes belong to one account and only it can read them.
 
   python3 app.py serve [--host 127.0.0.1] [--port 5090]
-  python3 app.py import seed.json        # load {collection: {doc_id: data}}, replacing those docs
-  python3 app.py backup                  # copy the database to data/backups/, keep 30
-  python3 app.py refresh                 # fetch market data once from the command line
-  python3 app.py reset-password          # forgot the password: sign everyone out, write a new setup code
+  python3 app.py users                       # list the accounts
+  python3 app.py reset-password NAME         # forgotten password: a one-time reset code, valid 24 hours
+  python3 app.py delete-user NAME            # delete an account and all of its records
+  python3 app.py registration on|off         # allow or stop new sign-ups
+  python3 app.py import NAME seed.json       # load {collection: {doc_id: data}} into an account
+  python3 app.py refresh NAME                # fetch market data for one account's holdings
+  python3 app.py backup                      # copy the database to data/backups/, keep 30
 """
 import datetime as dt
 import hashlib
 import hmac
 import ipaddress
 import json
+import math
 import os
+import re
 import secrets
 import sqlite3
 import sys
@@ -31,13 +38,25 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA, "ledger.db")
 STATIC = os.path.join(ROOT, "static")
-COLLECTIONS = {"trades", "history", "fixed", "config", "candles", "reading", "watch"}
+USER_COLLS = {"trades", "fixed", "config", "reading"}
+SHARED_COLLS = {"history", "candles", "watch"}  # market data: written only by the server, uid 0
+PAGES = {"/": "index.html", "/index.html": "index.html", "/dashboard": "dashboard.html", "/reading": "reading.html", "/account": "account.html"}
+PUBLIC_PAGES = {"/privacy": "privacy.html"}
 ASSETS = {"d3.min.js": "text/javascript; charset=utf-8"}
+NAME_RE = re.compile(r"^[A-Za-z0-9_一-鿿]{2,20}$")
+SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,11}$")
 SESSION_DAYS = 30
 MAX_BODY = 256 * 1024
+MAX_USERS = 2000
+MAX_DOCS = 5000          # records per account
+REFRESH_GAP = 30         # seconds between two refreshes of one account
+RESET_HOURS = 24
 HK, NY = ZoneInfo("Asia/Hong_Kong"), ZoneInfo("America/New_York")
 write_lock = threading.Lock()
-fails = {}  # ip -> [count, first_failure_time]
+refresh_lock = threading.Lock()
+fails = {}         # ip -> [count, first_time]: wrong passwords and reset codes
+signups = {}       # ip -> [count, first_time]
+last_refresh = {}  # uid -> time
 
 
 # ---------------------------------------------------------------- storage
@@ -47,22 +66,44 @@ def db():
     return con
 
 
+def columns(con, table):
+    return [r[1] for r in con.execute("PRAGMA table_info(%s)" % table)]
+
+
 def init_db():
     os.makedirs(DATA, exist_ok=True)
-    with db() as con:
-        con.executescript("""
-            CREATE TABLE IF NOT EXISTS docs (coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL,
-                updated TEXT NOT NULL, PRIMARY KEY (coll, id));
-            CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires REAL NOT NULL);
-        """)
+    with write_lock, db() as con:
         con.execute("PRAGMA journal_mode=WAL")
-    if not get_meta("password"):
-        path = os.path.join(DATA, "setup-code.txt")
-        if not os.path.exists(path):
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                f.write(secrets.token_hex(4) + "\n")
+        con.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+        con.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, "
+                    "pw TEXT NOT NULL DEFAULT '', created TEXT NOT NULL, reset_hash TEXT, reset_expires REAL)")
+        old = columns(con, "docs")
+        if old and "uid" not in old:
+            migrate_single_user(con)
+        con.execute("CREATE TABLE IF NOT EXISTS docs (uid INTEGER NOT NULL, coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, "
+                    "updated TEXT NOT NULL, PRIMARY KEY (uid, coll, id))")
+        old = columns(con, "sessions")
+        if old and "uid" not in old:
+            con.execute("DROP TABLE sessions")
+        con.execute("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, uid INTEGER NOT NULL, expires REAL NOT NULL)")
+
+
+def migrate_single_user(con):
+    """Version 1 kept one ledger behind one password; its records become the account "admin"."""
+    r = con.execute("SELECT v FROM meta WHERE k='password'").fetchone()
+    con.execute("INSERT INTO users(name, pw, created) VALUES('admin', ?, ?)", (r["v"] if r else "", now_iso()))
+    uid = con.execute("SELECT id FROM users WHERE name='admin'").fetchone()["id"]
+    con.execute("CREATE TABLE docs_v2 (uid INTEGER NOT NULL, coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, "
+                "updated TEXT NOT NULL, PRIMARY KEY (uid, coll, id))")
+    con.execute("INSERT INTO docs_v2 SELECT CASE WHEN coll IN ('history', 'candles', 'watch') THEN 0 ELSE ? END, coll, id, data, updated "
+                "FROM docs", (uid,))
+    con.execute("DROP TABLE docs")
+    con.execute("ALTER TABLE docs_v2 RENAME TO docs")
+    con.execute("DELETE FROM meta WHERE k IN ('password', 'version')")
+    code = os.path.join(DATA, "setup-code.txt")
+    if os.path.exists(code):
+        os.remove(code)
+    print('moved the single-user ledger into the account "admin"' + ("" if r else "; it has no password yet: run reset-password admin"), flush=True)
 
 
 def get_meta(k):
@@ -76,71 +117,131 @@ def set_meta(k, v):
         con.execute("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v))
 
 
-def bump():
-    set_meta("version", str(int(get_meta("version") or 0) + 1))
+def bump(uid):
+    k = "version:%d" % uid
+    set_meta(k, str(int(get_meta(k) or 0) + 1))
 
 
 def now_iso():
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def list_docs(coll):
+def list_docs(uid, coll):
     with db() as con:
-        rows = con.execute("SELECT id, data FROM docs WHERE coll=? ORDER BY id", (coll,)).fetchall()
+        rows = con.execute("SELECT id, data FROM docs WHERE uid=? AND coll=? ORDER BY id", (uid, coll)).fetchall()
     return [{"id": r["id"], "data": json.loads(r["data"])} for r in rows]
 
 
-def get_doc(coll, id_):
+def get_doc(uid, coll, id_):
     with db() as con:
-        r = con.execute("SELECT data FROM docs WHERE coll=? AND id=?", (coll, id_)).fetchone()
+        r = con.execute("SELECT data FROM docs WHERE uid=? AND coll=? AND id=?", (uid, coll, id_)).fetchone()
     return json.loads(r["data"]) if r else None
 
 
-def put_doc(coll, id_, data, merge=False):
+def put_doc(uid, coll, id_, data, merge=False):
     with write_lock, db() as con:
         if merge:
-            r = con.execute("SELECT data FROM docs WHERE coll=? AND id=?", (coll, id_)).fetchone()
+            r = con.execute("SELECT data FROM docs WHERE uid=? AND coll=? AND id=?", (uid, coll, id_)).fetchone()
             data = {**(json.loads(r["data"]) if r else {}), **data}
-        con.execute("INSERT INTO docs(coll,id,data,updated) VALUES(?,?,?,?) ON CONFLICT(coll,id) DO UPDATE "
-                    "SET data=excluded.data, updated=excluded.updated", (coll, id_, json.dumps(data, ensure_ascii=False), now_iso()))
-    bump()
+        con.execute("INSERT INTO docs(uid,coll,id,data,updated) VALUES(?,?,?,?,?) ON CONFLICT(uid,coll,id) DO UPDATE "
+                    "SET data=excluded.data, updated=excluded.updated", (uid, coll, id_, json.dumps(data, ensure_ascii=False), now_iso()))
+    bump(uid)
     return data
 
 
-def del_doc(coll, id_):
+def del_doc(uid, coll, id_):
     with write_lock, db() as con:
-        con.execute("DELETE FROM docs WHERE coll=? AND id=?", (coll, id_))
-    bump()
+        con.execute("DELETE FROM docs WHERE uid=? AND coll=? AND id=?", (uid, coll, id_))
+    bump(uid)
 
 
-# ---------------------------------------------------------------- auth
+def count_docs(uid):
+    with db() as con:
+        return con.execute("SELECT COUNT(*) FROM docs WHERE uid=?", (uid,)).fetchone()[0]
+
+
+def user_symbols(uid):
+    """Symbols this account has traded: the only closes and daily bars it may read."""
+    return {str(d["data"].get("symbol", "")).upper() for d in list_docs(uid, "trades")}
+
+
+# ---------------------------------------------------------------- accounts
 def hash_pw(pw, salt=None):
     salt = salt or secrets.token_hex(16)
     return salt + "$" + hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 240000).hex()
 
 
-def check_pw(pw):
-    stored = get_meta("password")
+def check_hash(secret, stored):
     if not stored:
+        hash_pw(secret)  # same work as a real check, so a missing account does not answer faster
         return False
-    salt = stored.split("$", 1)[0]
-    return hmac.compare_digest(hash_pw(pw, salt), stored)
+    return hmac.compare_digest(hash_pw(secret, stored.split("$", 1)[0]), stored)
 
 
-def new_session():
+def get_user(name):
+    with db() as con:
+        return con.execute("SELECT * FROM users WHERE name=?", (name,)).fetchone()
+
+
+def get_user_by_id(uid):
+    with db() as con:
+        return con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+
+
+def user_count():
+    with db() as con:
+        return con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+def registration_open():
+    return get_meta("registration") != "off"
+
+
+def create_user(name, pw_hash):
+    try:
+        with write_lock, db() as con:
+            return con.execute("INSERT INTO users(name, pw, created) VALUES(?,?,?)", (name, pw_hash, now_iso())).lastrowid
+    except sqlite3.IntegrityError:
+        return None
+
+
+def set_password(uid, pw_hash):
+    """New password; every device signed in to this account is signed out."""
+    with write_lock, db() as con:
+        con.execute("UPDATE users SET pw=?, reset_hash=NULL, reset_expires=NULL WHERE id=?", (pw_hash, uid))
+        con.execute("DELETE FROM sessions WHERE uid=?", (uid,))
+
+
+def set_reset_code(uid):
+    code = secrets.token_hex(4)
+    with write_lock, db() as con:
+        con.execute("UPDATE users SET reset_hash=?, reset_expires=? WHERE id=?", (hash_pw(code), time.time() + RESET_HOURS * 3600, uid))
+        con.execute("DELETE FROM sessions WHERE uid=?", (uid,))
+    return code
+
+
+def delete_user(uid):
+    with write_lock, db() as con:
+        con.execute("DELETE FROM docs WHERE uid=?", (uid,))
+        con.execute("DELETE FROM sessions WHERE uid=?", (uid,))
+        con.execute("DELETE FROM users WHERE id=?", (uid,))
+        con.execute("DELETE FROM meta WHERE k=?", ("version:%d" % uid,))
+
+
+def new_session(uid):
     token = secrets.token_urlsafe(32)
     with write_lock, db() as con:
         con.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
-        con.execute("INSERT INTO sessions(token, expires) VALUES(?,?)", (token, time.time() + SESSION_DAYS * 86400))
+        con.execute("INSERT INTO sessions(token, uid, expires) VALUES(?,?,?)", (token, uid, time.time() + SESSION_DAYS * 86400))
     return token
 
 
-def valid_session(token):
+def session_uid(token):
     if not token:
-        return False
+        return None
     with db() as con:
-        r = con.execute("SELECT expires FROM sessions WHERE token=?", (token,)).fetchone()
-    return bool(r and r["expires"] > time.time())
+        r = con.execute("SELECT uid, expires FROM sessions WHERE token=?", (token,)).fetchone()
+    return r["uid"] if r and r["expires"] > time.time() else None
 
 
 def drop_session(token):
@@ -148,17 +249,21 @@ def drop_session(token):
         con.execute("DELETE FROM sessions WHERE token=?", (token,))
 
 
-def locked_out(ip):
-    c = fails.get(ip)
-    if c and time.time() - c[1] > 900:
-        fails.pop(ip, None)
+def too_many(book, ip, limit, window):
+    c = book.get(ip)
+    if c and time.time() - c[1] > window:
+        book.pop(ip, None)
         return False
-    return bool(c and c[0] >= 5)
+    return bool(c and c[0] >= limit)
 
 
-def note_fail(ip):
-    c = fails.setdefault(ip, [0, time.time()])
+def note(book, ip):
+    c = book.setdefault(ip, [0, time.time()])
     c[0] += 1
+
+
+def locked_out(ip):
+    return too_many(fails, ip, 5, 900)
 
 
 # ---------------------------------------------------------------- market data
@@ -267,12 +372,12 @@ def fx_rates():
     return rates
 
 
-def refresh_market():
-    """Update config/main prices, quotes and rates, and history closes for traded symbols."""
-    trades = [d["data"] for d in list_docs("trades")]
-    cfg = get_doc("config", "main") or {}
-    traded = sorted({str(t.get("symbol", "")).upper() for t in trades if t.get("symbol")})
-    symbols = sorted(set(traded) | set((cfg.get("prices") or {}).keys()))
+def refresh_market(uid):
+    """Update one account's prices, quotes and rates, and the shared closes, daily bars, gold and USD/CNY."""
+    trades = [d["data"] for d in list_docs(uid, "trades")]
+    cfg = get_doc(uid, "config", "main") or {}
+    traded = sorted({s for s in (str(t.get("symbol", "")).upper() for t in trades) if SYMBOL_RE.match(s)})
+    symbols = sorted(set(traded) | {s for s in (cfg.get("prices") or {}) if SYMBOL_RE.match(s)})
     report = {"updated": {}, "kept_manual": [], "errors": {}, "history": {}}
     q, errs = quotes(symbols)
     report["errors"].update(errs)
@@ -293,18 +398,18 @@ def refresh_market():
         report["fx"] = {"USDHKD": patch.get("fx")}
     except Exception as e:
         report["errors"]["fx"] = "汇率取不到：%s" % e
-    put_doc("config", "main", patch, merge=True)
+    put_doc(uid, "config", "main", patch, merge=True)
     try:
         g = gold_bars()
         if g:
-            put_doc("watch", "GC", {"name": "纽约黄金期货（COMEX 近月）", "unit": "美元/盎司", "bars": g, "updatedAt": now_iso()})
+            put_doc(0, "watch", "GC", {"name": "纽约黄金期货（COMEX 近月）", "unit": "美元/盎司", "bars": g, "updatedAt": now_iso()})
             report["gold"] = {"price": g[-1][4], "date": g[-1][0]}
     except Exception as e:
         report["errors"]["金价"] = str(e)
     try:
         fxb = usdcny_bars()
         if fxb:
-            put_doc("watch", "USDCNY", {"name": "美元兑人民币（在岸）", "unit": "人民币/美元", "bars": fxb, "updatedAt": now_iso()})
+            put_doc(0, "watch", "USDCNY", {"name": "美元兑人民币（在岸）", "unit": "人民币/美元", "bars": fxb, "updatedAt": now_iso()})
             report["usdcny"] = {"rate": fxb[-1][4], "date": fxb[-1][0]}
     except Exception as e:
         report["errors"]["人民币汇率"] = str(e)
@@ -314,9 +419,9 @@ def refresh_market():
             bars = daily_bars(s, code)
             if bars:
                 ccy = "HKD" if is_hk(s) else "USD"
-                put_doc("history", s, {"symbol": s, "currency": ccy, "closes": {b[0]: b[4] for b in bars}, "updatedAt": now_iso()})
-                put_doc("candles", s, {"symbol": s, "currency": ccy, "name": (q.get(s) or {}).get("name") or quotes_meta.get(s, {}).get("name", ""),
-                                       "bars": bars, "updatedAt": now_iso()})
+                put_doc(0, "history", s, {"symbol": s, "currency": ccy, "closes": {b[0]: b[4] for b in bars}, "updatedAt": now_iso()})
+                put_doc(0, "candles", s, {"symbol": s, "currency": ccy, "name": (q.get(s) or {}).get("name") or quotes_meta.get(s, {}).get("name", ""),
+                                          "bars": bars, "updatedAt": now_iso()})
                 report["history"][s] = len(bars)
         except Exception as e:
             report["errors"][s + " 历史"] = str(e)
@@ -378,13 +483,16 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("expected an object")
         return obj
 
+    def signed_in(self, uid):
+        return self.send_json(200, {"ok": True}, {"Set-Cookie": self.cookie(new_session(uid))})
+
     def route(self, method):
         path = self.path.split("?", 1)[0]
-        authed = valid_session(self.token())
-        if method == "GET" and path in ("/", "/index.html"):
-            return self.send_file("index.html" if authed else "login.html")
-        if method == "GET" and path in ("/dashboard", "/reading"):
-            return self.send_file(path[1:] + ".html" if authed else "login.html")
+        uid = session_uid(self.token())
+        if method == "GET" and path in PAGES:
+            return self.send_file(PAGES[path] if uid else "login.html")
+        if method == "GET" and path in PUBLIC_PAGES:
+            return self.send_file(PUBLIC_PAGES[path])
         if method == "GET" and path.startswith("/assets/") and path[8:] in ASSETS:
             return self.send_file(path[8:], ASSETS[path[8:]], "public, max-age=31536000, immutable")
         if not path.startswith("/api/"):
@@ -392,71 +500,136 @@ class Handler(BaseHTTPRequestHandler):
         if method != "GET" and self.headers.get("X-Requested-With") != "ledger":
             return self.send_json(403, {"error": "forbidden"})
         parts = path[5:].strip("/").split("/")
+        ip = self.client_ip()
 
+        # ---- signed out: sign in, sign up, reset a forgotten password
         if parts == ["auth"] and method == "GET":
-            return self.send_json(200, {"authed": authed, "setup": not get_meta("password")})
+            u = get_user_by_id(uid) if uid else None
+            return self.send_json(200, {"authed": bool(u), "name": u["name"] if u else None, "registration": registration_open()})
         if parts == ["login"] and method == "POST":
-            ip = self.client_ip()
-            if locked_out(ip):
-                return self.send_json(429, {"error": "密码错误次数太多，15 分钟后再试。"})
-            if check_pw(str(self.body().get("password", ""))):
-                fails.pop(ip, None)
-                return self.send_json(200, {"ok": True}, {"Set-Cookie": self.cookie(new_session())})
-            note_fail(ip)
-            return self.send_json(401, {"error": "密码不对。"})
-        if parts == ["setup"] and method == "POST":
-            b = self.body()
-            path_code = os.path.join(DATA, "setup-code.txt")
-            if get_meta("password") or not os.path.exists(path_code):
-                return self.send_json(403, {"error": "已经设置过密码。"})
-            ip = self.client_ip()
             if locked_out(ip):
                 return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
-            with open(path_code) as f:
-                code = f.read().strip()
-            pw = str(b.get("password", ""))
-            if not hmac.compare_digest(str(b.get("code", "")).strip(), code):
-                note_fail(ip)
-                return self.send_json(401, {"error": "设置码不对。"})
-            if len(pw) < 8:
-                return self.send_json(400, {"error": "密码至少 8 位。"})
-            set_meta("password", hash_pw(pw))
-            os.remove(path_code)
-            return self.send_json(200, {"ok": True}, {"Set-Cookie": self.cookie(new_session())})
+            b = self.body()
+            u = get_user(str(b.get("name", "")).strip())
+            if check_hash(str(b.get("password", "")), u["pw"] if u else "") and u:
+                fails.pop(ip, None)
+                return self.signed_in(u["id"])
+            note(fails, ip)
+            return self.send_json(401, {"error": "用户名或密码不对。"})
+        if parts == ["register"] and method == "POST":
+            if not registration_open():
+                return self.send_json(403, {"error": "现在不开放注册。"})
+            if too_many(signups, ip, 3, 3600):
+                return self.send_json(429, {"error": "注册太频繁，一小时后再试。"})
+            b = self.body()
+            name, pw = str(b.get("name", "")).strip(), str(b.get("password", ""))
+            if b.get("agree") is not True:
+                return self.send_json(400, {"error": "请先阅读并同意隐私说明。"})
+            if not NAME_RE.match(name):
+                return self.send_json(400, {"error": "用户名要 2–20 个字，只能用字母、数字、下划线或汉字。"})
+            if not 8 <= len(pw) <= 128:
+                return self.send_json(400, {"error": "密码要 8–128 位。"})
+            if user_count() >= MAX_USERS:
+                return self.send_json(403, {"error": "注册人数已满。"})
+            new = create_user(name, hash_pw(pw))
+            if not new:
+                return self.send_json(409, {"error": "这个用户名已经有人用了，换一个吧。"})
+            note(signups, ip)
+            return self.signed_in(new)
+        if parts == ["reset"] and method == "POST":
+            if locked_out(ip):
+                return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
+            b = self.body()
+            u, pw = get_user(str(b.get("name", "")).strip()), str(b.get("password", ""))
+            if not 8 <= len(pw) <= 128:
+                return self.send_json(400, {"error": "新密码要 8–128 位。"})
+            live = bool(u and u["reset_hash"] and (u["reset_expires"] or 0) > time.time())
+            if not (check_hash(str(b.get("code", "")).strip(), u["reset_hash"] if live else "") and live):
+                note(fails, ip)
+                return self.send_json(401, {"error": "用户名或重置码不对，或者重置码已过期。"})
+            fails.pop(ip, None)
+            set_password(u["id"], hash_pw(pw))
+            return self.signed_in(u["id"])
 
-        if not authed:
+        if not uid:
             return self.send_json(401, {"error": "请先登录。"})
+
+        # ---- signed in: the account itself
         if parts == ["logout"] and method == "POST":
             drop_session(self.token())
             return self.send_json(200, {"ok": True}, {"Set-Cookie": "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"})
+        if parts == ["password"] and method == "POST":
+            if locked_out(ip):
+                return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
+            b = self.body()
+            pw = str(b.get("password", ""))
+            if not check_hash(str(b.get("old", "")), get_user_by_id(uid)["pw"]):
+                note(fails, ip)
+                return self.send_json(401, {"error": "原密码不对。"})
+            if not 8 <= len(pw) <= 128:
+                return self.send_json(400, {"error": "新密码要 8–128 位。"})
+            set_password(uid, hash_pw(pw))
+            return self.signed_in(uid)
+        if parts == ["export"] and method == "GET":
+            return self.send_json(200, {c: {d["id"]: d["data"] for d in list_docs(uid, c)} for c in sorted(USER_COLLS)})
+        if parts == ["account", "delete"] and method == "POST":
+            if locked_out(ip):
+                return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
+            if not check_hash(str(self.body().get("password", "")), get_user_by_id(uid)["pw"]):
+                note(fails, ip)
+                return self.send_json(401, {"error": "密码不对。"})
+            delete_user(uid)
+            return self.send_json(200, {"ok": True}, {"Set-Cookie": "sid=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"})
         if parts == ["version"] and method == "GET":
-            return self.send_json(200, {"version": get_meta("version") or "0"})
+            return self.send_json(200, {"version": "%s-%s" % (get_meta("version:0") or "0", get_meta("version:%d" % uid) or "0")})
         if parts == ["refresh"] and method == "POST":
+            wait = REFRESH_GAP - (time.time() - last_refresh.get(uid, 0))
+            if wait > 0:
+                return self.send_json(429, {"error": "刚刷新过，%d 秒后再试。" % math.ceil(wait)})
+            if not refresh_lock.acquire(timeout=60):
+                return self.send_json(503, {"error": "服务器正忙，稍后再试。"})
             try:
-                return self.send_json(200, refresh_market())
+                last_refresh[uid] = time.time()
+                return self.send_json(200, refresh_market(uid))
             except Exception as e:
                 return self.send_json(502, {"error": "取行情失败：%s" % e})
+            finally:
+                refresh_lock.release()
 
-        if len(parts) >= 2 and parts[0] in ("c", "d") and parts[1] in COLLECTIONS:
+        # ---- records
+        if len(parts) >= 2 and parts[0] in ("c", "d") and parts[1] in SHARED_COLLS:
             coll = parts[1]
+            if method != "GET":
+                return self.send_json(403, {"error": "行情数据只能由服务器更新。"})
+            mine = None if coll == "watch" else user_symbols(uid)  # other accounts' holdings stay private
+            if parts[0] == "c" and len(parts) == 2:
+                return self.send_json(200, {"docs": [d for d in list_docs(0, coll) if mine is None or d["id"] in mine]})
+            if parts[0] == "d" and len(parts) == 3 and parts[2]:
+                d = get_doc(0, coll, parts[2]) if mine is None or parts[2] in mine else None
+                return self.send_json(200, {"exists": d is not None, "data": d})
+        if len(parts) >= 2 and parts[0] in ("c", "d") and parts[1] in USER_COLLS:
+            coll = parts[1]
+            full = {"error": "记录太多了，每个账号最多 %d 条。" % MAX_DOCS}
             if parts[0] == "c" and len(parts) == 2:
                 if method == "GET":
-                    return self.send_json(200, {"docs": list_docs(coll)})
+                    return self.send_json(200, {"docs": list_docs(uid, coll)})
                 if method == "POST":
+                    if count_docs(uid) >= MAX_DOCS:
+                        return self.send_json(507, full)
                     id_ = "n" + dt.datetime.now().strftime("%Y%m%d%H%M%S") + secrets.token_hex(3)
-                    put_doc(coll, id_, self.body())
+                    put_doc(uid, coll, id_, self.body())
                     return self.send_json(200, {"id": id_})
             if parts[0] == "d" and len(parts) == 3 and parts[2] and len(parts[2]) <= 120:
                 id_ = parts[2]
                 if method == "GET":
-                    d = get_doc(coll, id_)
+                    d = get_doc(uid, coll, id_)
                     return self.send_json(200, {"exists": d is not None, "data": d})
-                if method == "PUT":
-                    return self.send_json(200, {"data": put_doc(coll, id_, self.body())})
-                if method == "PATCH":
-                    return self.send_json(200, {"data": put_doc(coll, id_, self.body(), merge=True)})
+                if method in ("PUT", "PATCH"):
+                    if get_doc(uid, coll, id_) is None and count_docs(uid) >= MAX_DOCS:
+                        return self.send_json(507, full)
+                    return self.send_json(200, {"data": put_doc(uid, coll, id_, self.body(), merge=method == "PATCH")})
                 if method == "DELETE":
-                    del_doc(coll, id_)
+                    del_doc(uid, coll, id_)
                     return self.send_json(200, {"ok": True})
         return self.send_json(404, {"error": "not found"})
 
@@ -503,35 +676,63 @@ def backup():
     print(dst)
 
 
+def arg(i, usage):
+    if len(sys.argv) <= i:
+        raise SystemExit("usage: python3 app.py " + usage)
+    return sys.argv[i]
+
+
+def account(name):
+    u = get_user(name)
+    if not u:
+        raise SystemExit("no such account: " + name)
+    return u
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
     init_db()
     if cmd == "serve":
         host = sys.argv[sys.argv.index("--host") + 1] if "--host" in sys.argv else "127.0.0.1"
         port = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 5090
-        if not get_meta("password"):
-            print("first run: open the page and enter the setup code from %s" % os.path.join(DATA, "setup-code.txt"), flush=True)
-        print("listening on %s:%d" % (host, port), flush=True)
+        print("%d accounts, registration %s; listening on %s:%d" % (user_count(), "open" if registration_open() else "closed", host, port), flush=True)
         ThreadingHTTPServer((host, port), Handler).serve_forever()
+    elif cmd == "users":
+        with db() as con:
+            rows = con.execute("SELECT u.name, u.created, COUNT(d.id) AS n FROM users u LEFT JOIN docs d ON d.uid = u.id "
+                               "GROUP BY u.id ORDER BY u.id").fetchall()
+        for r in rows:
+            print("%-20s created %s  %d records" % (r["name"], r["created"], r["n"]))
+        print("%d accounts, registration %s" % (len(rows), "open" if registration_open() else "closed"))
+    elif cmd == "reset-password":
+        u = account(arg(2, "reset-password NAME"))
+        code = set_reset_code(u["id"])
+        print("reset code for %s: %s  (valid %d hours; on the sign-in page choose 忘记密码 and enter it with a new password)"
+              % (u["name"], code, RESET_HOURS))
+    elif cmd == "delete-user":
+        u = account(arg(2, "delete-user NAME"))
+        delete_user(u["id"])
+        print("deleted " + u["name"])
+    elif cmd == "registration":
+        v = arg(2, "registration on|off")
+        if v not in ("on", "off"):
+            raise SystemExit("usage: python3 app.py registration on|off")
+        set_meta("registration", v)
+        print("registration " + ("open" if v == "on" else "closed"))
     elif cmd == "import":
-        with open(sys.argv[2], encoding="utf-8") as f:
+        u = account(arg(2, "import NAME seed.json"))
+        with open(arg(3, "import NAME seed.json"), encoding="utf-8") as f:
             seed = json.load(f)
         for coll, docs in seed.items():
-            if coll not in COLLECTIONS:
+            if coll not in USER_COLLS:
                 raise SystemExit("unknown collection: " + coll)
             for id_, data in docs.items():
-                put_doc(coll, id_, data)
+                put_doc(u["id"], coll, id_, data)
             print(coll, len(docs))
     elif cmd == "backup":
         backup()
     elif cmd == "refresh":
-        print(json.dumps(refresh_market(), ensure_ascii=False, indent=1))
-    elif cmd == "reset-password":
-        with write_lock, db() as con:
-            con.execute("DELETE FROM meta WHERE k='password'")
-            con.execute("DELETE FROM sessions")
-        init_db()
-        print("password cleared; open the page and set a new one with the setup code in %s" % os.path.join(DATA, "setup-code.txt"))
+        print(json.dumps(refresh_market(account(arg(2, "refresh NAME"))["id"]), ensure_ascii=False, indent=1))
     else:
         raise SystemExit(__doc__)
 

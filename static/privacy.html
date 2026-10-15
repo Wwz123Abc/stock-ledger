@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>隐私说明 · 美股持仓账本</title>
+<style>
+/* Layout: one readable column of short sections */
+:root {
+  --bg: #EDF0F3; --surface: #FFFFFF; --ink: #16202A; --muted: #5D6A77; --line: #D3DAE1; --accent: #2B5784;
+  --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540; --accent: #82ABDA; color-scheme: dark; }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.75; }
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 56px; }
+h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; }
+h2 { margin: 28px 0 6px; font-size: 17px; font-weight: 600; }
+p, li { margin: 0 0 6px; }
+ul { margin: 0; padding-left: 20px; }
+.muted { color: var(--muted); font-size: 13px; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>隐私说明</h1>
+  <p class="muted">美股持仓账本是一个免费的个人记账工具。注册即表示你同意下面的做法。</p>
+
+  <h2>保存哪些信息</h2>
+  <ul>
+    <li>你的用户名，以及加密后的密码（只存不可还原的哈希值，任何人都看不到原密码）。</li>
+    <li>你自己录入的内容：股票交易、国债和定期存款、手动填写的价格、备注、读书进度和笔记。</li>
+    <li>登录状态：浏览器里一个用于保持登录的 Cookie，30 天后过期，没有任何广告或统计 Cookie。</li>
+  </ul>
+  <p>不收集手机号、邮箱、真实姓名、证件号或银行卡号。<strong>请不要在备注里填写证券账号、银行卡号、密码等敏感信息。</strong></p>
+
+  <h2>谁能看到</h2>
+  <ul>
+    <li>在网站上，你的记录只有登录你的账号后才能看到，其他用户看不到。</li>
+    <li>网站管理员能够接触存放数据的服务器。管理员不会查看或使用你的记录，除非是你请求协助（比如重置密码），或者法律法规要求。</li>
+    <li>你的信息不会出售、出租或提供给任何第三方。</li>
+  </ul>
+
+  <h2>行情查询</h2>
+  <p>点“刷新数据”时，服务器会把你持有的股票代码发给腾讯财经、新浪财经查询价格和 K 线，不会发送用户名或其他个人信息。行情数据来自它们网页上的公开接口，可能延迟或出错。</p>
+
+  <h2>保存期限、导出和注销</h2>
+  <ul>
+    <li>记录会一直保存，直到你注销账号。</li>
+    <li>在“账号”页面可以随时导出全部记录（JSON 文件），也可以注销账号。</li>
+    <li>注销后，你的账号和全部记录会立即从数据库删除。服务器每天自动备份一次，备份文件最多保留 30 天，到期自动删除。</li>
+  </ul>
+
+  <h2>安全</h2>
+  <p>网站全程使用 HTTPS，密码加密保存，连续输错会暂时锁定。但任何网站都无法保证绝对安全，建议你定期导出记录自己保存一份。</p>
+
+  <h2>其他</h2>
+  <ul>
+    <li>这是免费服务，不保证一直可用。如果要停止服务，会尽量提前在网站上通知，留出导出数据的时间。</li>
+    <li>页面上的成本、盈亏和收益都是按公式估算的，以券商或银行的单据为准，不构成任何投资建议。</li>
+    <li>对隐私有疑问，或想让管理员协助处理你的数据，请联系本站管理员。</li>
+  </ul>
+  <p class="muted" style="margin-top: 28px"><a href="/">← 回到美股持仓账本</a></p>
+</main>
+</body>
+</html>
