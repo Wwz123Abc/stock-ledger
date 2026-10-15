@@ -852,9 +852,22 @@ def main():
             print("screenshot import off")
         else:
             import getpass
-            key = getpass.getpass("DashScope API key (input hidden): ").strip()
+            key = getpass.getpass("DashScope API key (input hidden, paste once): ").strip()
             if not key.startswith("sk-"):
                 raise SystemExit("that does not look like a DashScope key (it starts with sk-)")
+            if key.count("sk-") > 1:
+                raise SystemExit("the key looks pasted more than once; run the command again and paste it a single time")
+            # Ask DashScope before saving, so a wrong key is caught now rather than on the first screenshot.
+            check = urllib.request.Request(VISION_URL.replace("/chat/completions", "/models"), headers={"Authorization": "Bearer " + key})
+            try:
+                urllib.request.urlopen(check, timeout=20).close()
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403):
+                    raise SystemExit("DashScope rejected this key (HTTP %d). Create one in the Model Studio (百炼) console for the "
+                                     "China (Beijing) region and copy it in full; nothing was saved." % e.code)
+                print("warning: could not check the key (HTTP %d); saving it anyway" % e.code)
+            except Exception as e:
+                print("warning: could not reach DashScope to check the key (%s); saving it anyway" % e)
             set_meta("vision_key", key)
             print("screenshot import on, model %s; restart not needed" % (get_meta("vision_model") or VISION_MODEL))
     elif cmd == "refresh":
