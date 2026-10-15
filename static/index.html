@@ -493,7 +493,7 @@ footer p { margin: 0 0 6px; }
       <input type="radio" name="imode" id="im-file" value="file"><label for="im-file">导入文件</label>
     </div>
     <div class="imp-pane" data-pane="shot">
-      <p class="hint">选择券商或银行 App 的成交截图，可以一次选几张（最多 5 张）。截图会发给阿里云的通义千问识别，<b>请先裁掉账户号码、姓名等个人信息</b>。识别结果列在下面，核对无误再导入。<span id="impLeft"></span></p>
+      <p class="hint">选择券商或银行 App 的成交截图，可以一次选几张（最多 5 张）。截图会发给 <span id="impService">AI 识别服务</span> 识别，<b>请先裁掉账户号码、姓名等个人信息</b>。识别结果列在下面，核对无误再导入。<span id="impLeft"></span></p>
       <div class="imp-row"><input type="file" id="impImg" accept="image/*" multiple><button class="btn" type="button" id="impShotGo">开始识别</button></div>
     </div>
     <div class="imp-pane" data-pane="paste" hidden>
@@ -1808,6 +1808,7 @@ TAL|好未来|TAL Education
     impDlg.showModal();
     try {
       const r = await window.ledgerApi("GET", "/api/recognize");
+      if (r.service) $("#impService").textContent = r.service;
       $("#impLeft").textContent = r.enabled ? "今天还能识别 " + r.left + " 张。" : "（管理员还没有开通截图识别，可以先用粘贴表格。）";
       $("#impShotGo").disabled = !r.enabled;
     } catch (e) { /* the buttons still report errors */ }

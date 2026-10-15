@@ -15,7 +15,7 @@ notes belong to one account and only it can read them.
   python3 app.py import NAME seed.json       # load {collection: {doc_id: data}} into an account
   python3 app.py refresh NAME                # fetch market data for one account's holdings
   python3 app.py backup                      # copy the database to data/backups/, keep 30
-  python3 app.py vision-key                  # turn on screenshot import: asks for a DashScope API key
+  python3 app.py vision-key                  # turn on screenshot import: asks for a DeepSeek or DashScope API key
   python3 app.py vision-key off              # turn it off and forget the key
 """
 import datetime as dt
@@ -62,8 +62,10 @@ refresh_lock = threading.Lock()
 fails = {}         # ip -> [count, first_time]: wrong passwords and reset codes
 signups = {}       # ip -> [count, first_time]
 last_refresh = {}  # uid -> time
-VISION_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-VISION_MODEL = "qwen-vl-max"
+VISION = {  # screenshot readers with an OpenAI-compatible API: name -> (base URL, model, name shown to users)
+    "deepseek": ("https://api.deepseek.com", "deepseek-flash", "DeepSeek"),
+    "dashscope": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-vl-max", "阿里云百炼（通义千问）"),
+}
 VISION_PER_DAY = 20      # screenshots per account per day
 VISION_SITE_DAY = 300    # screenshots for the whole site per day
 vision_used = {}         # (date, uid) -> count; (date, 0) is the whole site
@@ -481,13 +483,19 @@ def vision_key():
     return get_meta("vision_key") or os.environ.get("DASHSCOPE_API_KEY", "")
 
 
+def vision_service():
+    """(base URL, model, display name) of the configured screenshot reader."""
+    return VISION.get(get_meta("vision_provider") or "dashscope", VISION["dashscope"])
+
+
 def recognize(image_url):
     """Trades read from one screenshot by the vision model, as a list of dicts (not yet checked)."""
-    body = {"model": get_meta("vision_model") or VISION_MODEL, "temperature": 0, "messages": [
+    base, model, _ = vision_service()
+    body = {"model": get_meta("vision_model") or model, "temperature": 0, "messages": [
         {"role": "system", "content": VISION_PROMPT},
         {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}}, {"type": "text", "text": "提取这张截图里的成交记录。"}]},
     ]}
-    req = urllib.request.Request(VISION_URL, data=json.dumps(body).encode(), method="POST",
+    req = urllib.request.Request(base + "/chat/completions", data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "Authorization": "Bearer " + vision_key()})
     with urllib.request.urlopen(req, timeout=90) as r:
         text = json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"]
@@ -683,7 +691,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"trades": len(good), "fixed": len(fx)})
         if parts == ["recognize"] and method == "GET":
             today = dt.date.today().isoformat()
-            return self.send_json(200, {"enabled": bool(vision_key()), "left": max(0, VISION_PER_DAY - vision_used.get((today, uid), 0))})
+            return self.send_json(200, {"enabled": bool(vision_key()), "service": vision_service()[2], "left": max(0, VISION_PER_DAY - vision_used.get((today, uid), 0))})
         if parts == ["recognize"] and method == "POST":
             if not vision_key():
                 return self.send_json(503, {"error": "管理员还没有开通截图识别，可以先用粘贴表格导入。"})
@@ -848,28 +856,36 @@ def main():
     elif cmd == "vision-key":
         if sys.argv[2:3] == ["off"]:
             with write_lock, db() as con:
-                con.execute("DELETE FROM meta WHERE k='vision_key'")
+                con.execute("DELETE FROM meta WHERE k IN ('vision_key', 'vision_provider')")
             print("screenshot import off")
         else:
             import getpass
-            key = getpass.getpass("DashScope API key (input hidden, paste once): ").strip()
+            asked = sys.argv[2] if len(sys.argv) > 2 else None
+            if asked and asked not in VISION:
+                raise SystemExit("usage: python3 app.py vision-key [%s|off]" % "|".join(VISION))
+            key = getpass.getpass("DeepSeek or DashScope API key (input hidden, paste once): ").strip()
             if not key.startswith("sk-"):
-                raise SystemExit("that does not look like a DashScope key (it starts with sk-)")
+                raise SystemExit("that does not look like an API key (it starts with sk-)")
             if key.count("sk-") > 1:
                 raise SystemExit("the key looks pasted more than once; run the command again and paste it a single time")
-            # Ask DashScope before saving, so a wrong key is caught now rather than on the first screenshot.
-            check = urllib.request.Request(VISION_URL.replace("/chat/completions", "/models"), headers={"Authorization": "Bearer " + key})
-            try:
-                urllib.request.urlopen(check, timeout=20).close()
-            except urllib.error.HTTPError as e:
-                if e.code in (401, 403):
-                    raise SystemExit("DashScope rejected this key (HTTP %d). Create one in the Model Studio (百炼) console for the "
-                                     "China (Beijing) region and copy it in full; nothing was saved." % e.code)
-                print("warning: could not check the key (HTTP %d); saving it anyway" % e.code)
-            except Exception as e:
-                print("warning: could not reach DashScope to check the key (%s); saving it anyway" % e)
+            # Both services use sk- keys of the same shape: ask each one (a free model listing) which accepts it, so a
+            # wrong key is caught now rather than on the first screenshot.
+            found, notes = None, []
+            for name in ([asked] if asked else list(VISION)):
+                req = urllib.request.Request(VISION[name][0] + "/models", headers={"Authorization": "Bearer " + key})
+                try:
+                    urllib.request.urlopen(req, timeout=20).close()
+                    found = name
+                    break
+                except urllib.error.HTTPError as e:
+                    notes.append("%s HTTP %d" % (name, e.code))
+                except Exception as e:
+                    notes.append("%s unreachable (%s)" % (name, e))
+            if not found:
+                raise SystemExit("no service accepted this key (%s); check that it was copied in full. Nothing was saved." % "; ".join(notes))
             set_meta("vision_key", key)
-            print("screenshot import on, model %s; restart not needed" % (get_meta("vision_model") or VISION_MODEL))
+            set_meta("vision_provider", found)
+            print("screenshot import on: %s, model %s; restart not needed" % (found, get_meta("vision_model") or VISION[found][1]))
     elif cmd == "refresh":
         print(json.dumps(refresh_market(account(arg(2, "refresh NAME"))["id"]), ensure_ascii=False, indent=1))
     else:
