@@ -30,6 +30,7 @@
 - **交易记录：** 按方向、代码筛选，按月分组小计。
 - **股票看板：** 每只持仓的日 K 线（均线、成本线、买卖点），金价，美元兑人民币汇率。
 - **投资读书清单：** 12 本入门书，可以打勾记进度、写笔记。
+- **学习计划：** 金融数据开发方向的求职学习计划，分 6 个阶段，按日期标出当前阶段，可以打勾记进度。
 - **刷新数据：** 点一下从腾讯财经、新浪财经取最新价格、收盘价和汇率。
 - **账号：** 用户名加密码注册登录；可以修改密码、导出全部记录、注销账号（同时删除全部记录）；注册页附隐私说明。
 
@@ -142,10 +143,10 @@ docker compose exec ledger python app.py users
 - `static/`：前端页面，纯 HTML、CSS 和 JavaScript，不需要构建。
   - `index.html` 是账本首页；
   - `dashboard.html` 是股票看板，用到同目录的 D3；
-  - `reading.html` 是读书清单；
+  - `reading.html` 是读书清单，`plan.html` 是学习计划；
   - `login.html` 是登录和注册页，`account.html` 是账号页，`privacy.html` 是隐私说明。
 - 数据按“集合”分开保存，每条记录是一个 JSON 文档：
-  - 每个账号自己的：交易 `trades`、国债和定存 `fixed`、设置和现价 `config`、读书进度 `reading`；
+  - 每个账号自己的：交易 `trades`、国债和定存 `fixed`、设置和现价 `config`、读书进度 `reading`、学习计划进度 `plan`；
   - 所有账号共用、只能由服务器写入的：收盘价 `history`、K 线 `candles`、金价和汇率 `watch`。
 
 欢迎提 Issue 和 Pull Request。

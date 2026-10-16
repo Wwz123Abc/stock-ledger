@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>学习计划</title>
+<style>
+/* Layout: one 760px column; a progress strip, then six dated phases, each a ruled list of tasks with check boxes.
+   The phase that today falls in is marked and opened; the rest are folded. */
+:root {
+  --bg: #EDF0F3; --surface: #FFFFFF; --ink: #16202A; --muted: #5D6A77; --line: #D3DAE1;
+  --accent: #2B5784; --accent-soft: #E2EAF3; --up: #1C7F4F; --warn: #9A6400;
+  --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540; --accent: #82ABDA; --accent-soft: #1E2D3F; --up: #4DC28A; --warn: #E0A84A; color-scheme: dark; }
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 56px; display: grid; gap: 24px; }
+h1 { margin: 0 0 6px; font-size: 30px; font-weight: 600; line-height: 1.25; }
+.lede { margin: 0; color: var(--muted); font-size: 13px; }
+.back { display: inline-block; margin-top: 10px; color: var(--accent); font-size: 13px; text-decoration: none; }
+.back:hover { text-decoration: underline; }
+.prog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.prog div { background: var(--surface); padding: 14px 18px; display: grid; gap: 6px; min-width: 0; }
+.prog .k { font-size: 13px; color: var(--muted); }
+.prog .v { font-size: 22px; font-weight: 600; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+details.phase { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+details.phase > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+details.phase > summary::-webkit-details-marker { display: none; }
+details.phase[open] > summary { border-bottom: 1px solid var(--line); }
+.ph-name { font-size: 17px; font-weight: 600; }
+.ph-when { grid-column: 1; font-size: 13px; color: var(--muted); }
+.ph-count { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 13px; color: var(--muted); }
+.badge { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 4px; font-size: 12px; font-weight: 500; vertical-align: 2px; }
+.badge.now { background: var(--accent-soft); color: var(--accent); }
+.badge.done { background: color-mix(in srgb, var(--up) 15%, transparent); color: var(--up); }
+.badge.late { color: var(--warn); border: 1px solid var(--warn); }
+.goal { margin: 0; padding: 10px 16px 0; font-size: 13px; color: var(--muted); }
+.tasks { list-style: none; margin: 0; padding: 4px 0; }
+.task { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 10px; padding: 10px 16px; }
+.task + .task { border-top: 1px solid var(--line); }
+.task input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--up); cursor: pointer; }
+.task label { cursor: pointer; }
+.task .sub { grid-column: 2; font-size: 13px; color: var(--muted); }
+.task .sub a { color: var(--accent); text-decoration: none; }
+.task .sub a:hover { text-decoration: underline; }
+.task.done label { text-decoration: line-through; text-decoration-color: var(--muted); color: var(--muted); }
+input:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#msg { margin: 0; font-size: 13px; color: var(--warn); min-height: 1.2em; }
+@media (max-width: 680px) {
+  .task { padding: 12px 14px; }
+  .back { padding: 6px 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>学习计划</h1>
+    <p class="lede">金融数据开发方向，2027 届本科求职：2026 年 10 月到 2027 年 4 月春招。主线是数据开发（金融数仓），Java 后端作备选，大模型和量化做加分。做完一项就勾上，进度保存在你的账号里。</p>
+    <a class="back" href="/">← 回到美股持仓账本</a>
+    <p id="msg" role="status"></p>
+  </header>
+
+  <div class="prog">
+    <div><span class="k">全部完成</span><span class="v" id="pAll">—</span><div class="bar"><span id="bAll"></span></div></div>
+    <div><span class="k" id="kNow">当前阶段</span><span class="v" id="pNow">—</span><div class="bar"><span id="bNow"></span></div></div>
+  </div>
+
+  <div id="phases" style="display: grid; gap: 12px"></div>
+</div>
+
+<script>
+(() => {
+  // The plan; task ids are stable keys for the saved progress, so don't rename them.
+  const L = (text, url) => '<a href="' + url + '" target="_blank" rel="noopener">' + text + " ↗</a>";
+  const PHASES = [
+    { name: "第 1 阶段：SQL 进阶和简历", from: "2026-10-19", to: "2026-11-01", goal: "马上开始投实习和秋招补录，不要等学完。", tasks: [
+      { id: "p1-window", t: "学会窗口函数：ROW_NUMBER、RANK、LAG / LEAD、累计求和、移动平均" },
+      { id: "p1-sql50", t: "刷完 LeetCode SQL 50", sub: L("力扣 SQL 50 题", "https://leetcode.cn/studyplan/sql-free-50/") },
+      { id: "p1-explain", t: "看懂 MySQL 执行计划（EXPLAIN）和索引原理（B+ 树、最左前缀、覆盖索引）" },
+      { id: "p1-resume", t: "完成简历第一版：投资账本系统 + 知识库问答两个项目" },
+      { id: "p1-apply", t: "投出 30 份实习和秋招补录申请（数据开发、量化开发实习、Java 后端）" },
+    ] },
+    { name: "第 2 阶段：大数据基础", from: "2026-11-02", to: "2026-11-22", goal: "能在本机跑通 Hive 和 Spark，讲清楚数仓分层。", tasks: [
+      { id: "p2-docker", t: "用 Docker 在本机搭好 Hadoop + Hive + Spark 环境" },
+      { id: "p2-hive", t: "Hive：建表、分区和分桶、常用函数、文件格式、数据倾斜的处理" },
+      { id: "p2-spark", t: "Spark：DataFrame 和 Spark SQL、宽依赖和窄依赖、shuffle、常见调优" },
+      { id: "p2-model", t: "读《大数据之路》数据模型部分：ODS / DWD / DWS / ADS 分层和维度建模" },
+      { id: "p2-kimball", t: "读《数据仓库工具箱》前 4 章：星型模型、事实表和维度表、缓慢变化维" },
+      { id: "p2-review", t: "每次面试后写复盘：被问了什么、哪里没答好、怎么补" },
+    ] },
+    { name: "第 3 阶段：核心项目 · 金融行情因子数仓", from: "2026-11-23", to: "2026-12-20", goal: "一个把数仓、量化因子、大模型合在一起的完整项目，发到 GitHub。", tasks: [
+      { id: "p3-ods", t: "ODS 层：用 AkShare 拉取日线行情和财务数据，原样入库", sub: L("AkShare 文档", "https://akshare.akfamily.xyz/") },
+      { id: "p3-dwd", t: "DWD 层：清洗数据，统一复权，处理停牌和缺失值" },
+      { id: "p3-dws", t: "DWS 层：每天计算动量、波动率、估值等因子" },
+      { id: "p3-ads", t: "ADS 层：计算因子 IC 和分层收益，做报表和看板" },
+      { id: "p3-airflow", t: "用 Airflow 或 DolphinScheduler 每天自动跑完整流程" },
+      { id: "p3-nl2sql", t: "加分：用 DeepSeek 做“智能问数”，把自然语言问题转成 SQL 并画图回答" },
+      { id: "p3-github", t: "代码、架构图、README 发到 GitHub，写进简历" },
+    ] },
+    { name: "第 4 阶段：实时计算", from: "2026-12-21", to: "2027-01-03", goal: "了解实时数据链路，能做一个小的实时项目。", tasks: [
+      { id: "p4-kafka", t: "Kafka：生产者和消费者、分区、偏移量、消息不丢不重" },
+      { id: "p4-flink", t: "Flink：窗口、watermark、checkpoint、exactly-once" },
+      { id: "p4-project", t: "小项目：实时行情监控和异常告警（Kafka + Flink + ClickHouse）" },
+    ] },
+    { name: "第 5 阶段：八股和面试准备", from: "2027-01-04", to: "2027-01-31", goal: "把知识点背熟，把项目讲顺。", tasks: [
+      { id: "p5-sql", t: "数据库和 SQL 八股：索引、事务、锁、隔离级别、SQL 优化" },
+      { id: "p5-bigdata", t: "大数据八股：Hive、Spark、数仓建模、Kafka、Flink" },
+      { id: "p5-basics", t: "计算机基础：操作系统、计算机网络、Java 基础和集合" },
+      { id: "p5-hot100", t: "算法题刷到 100 道", sub: L("力扣热题 100", "https://leetcode.cn/studyplan/top-100-liked/") },
+      { id: "p5-finance", t: "金融基础：股票、期货、期权的交易规则，风险指标（回撤、夏普、VaR）" },
+      { id: "p5-resume2", t: "简历第二版，加上数仓项目；写 1–2 篇技术文章" },
+      { id: "p5-mock", t: "完成 3 次模拟面试，重点练项目讲解" },
+    ] },
+    { name: "第 6 阶段：春招", from: "2027-02-01", to: "2027-04-30", goal: "广撒网，面试驱动查漏补缺，同时兼顾毕业设计。", tasks: [
+      { id: "p6-list", t: "整理目标公司清单：银行科技子公司、券商、期货公司、基金、金融软件公司、互金" },
+      { id: "p6-apply", t: "投出 50 份春招申请（数据开发为主，Java 后端为辅）" },
+      { id: "p6-review", t: "每场面试后复盘，一周内补上答不好的知识点" },
+      { id: "p6-thesis", t: "毕业设计按学校节点推进" },
+      { id: "p6-offer", t: "拿到第一个 offer" },
+    ] },
+  ];
+  const ALL = PHASES.flatMap((p) => p.tasks);
+  const $ = (s) => document.querySelector(s);
+  const H = { "Content-Type": "application/json", "X-Requested-With": "ledger" };
+  async function api(method, url, body) {
+    const r = await fetch(url, { method, headers: H, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+    if (r.status === 401) { location.reload(); throw new Error("请先登录"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    return j;
+  }
+  const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);  // Beijing date
+  const md = (s) => Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10));
+  const span = (p) => (p.from.slice(0, 4) !== p.to.slice(0, 4) ? p.from.slice(0, 4) + " 年 " : "") + md(p.from) + " – " + (p.from.slice(0, 4) !== p.to.slice(0, 4) ? p.to.slice(0, 4) + " 年 " : "") + md(p.to);
+  // The phase today falls in; before the plan starts, the first; after it ends, the last.
+  const upcoming = PHASES.findIndex((p) => today <= p.to), nowIdx = upcoming === -1 ? PHASES.length - 1 : upcoming;
+  let saved = {};
+
+  function build() {
+    $("#phases").innerHTML = PHASES.map((p, i) => '<details class="phase" data-i="' + i + '"' + (i === nowIdx ? " open" : "") + ">" +
+      '<summary><span class="ph-name">' + p.name + '<span class="badge"></span></span><span class="ph-when">' + span(p) + '</span><span class="ph-count"></span></summary>' +
+      '<p class="goal">' + p.goal + '</p><ul class="tasks">' +
+      p.tasks.map((t) => '<li class="task" data-id="' + t.id + '"><input type="checkbox" id="cb-' + t.id + '"><label for="cb-' + t.id + '">' + t.t + "</label>" +
+        (t.sub ? '<span class="sub">' + t.sub + "</span>" : "") + "</li>").join("") +
+      "</ul></details>").join("");
+  }
+
+  function render() {
+    const isDone = (t) => !!(saved[t.id] && saved[t.id].done);
+    const all = ALL.filter(isDone).length, cur = PHASES[nowIdx], curDone = cur.tasks.filter(isDone).length;
+    $("#pAll").textContent = all + " / " + ALL.length;
+    $("#bAll").style.width = (all / ALL.length) * 100 + "%";
+    $("#kNow").textContent = "当前阶段（" + span(cur) + "）";
+    $("#pNow").textContent = curDone + " / " + cur.tasks.length;
+    $("#bNow").style.width = (curDone / cur.tasks.length) * 100 + "%";
+    document.querySelectorAll("details.phase").forEach((d) => {
+      const p = PHASES[d.dataset.i], n = p.tasks.filter(isDone).length, left = p.tasks.length - n;
+      const b = d.querySelector(".badge");
+      const state = left === 0 ? "done" : today > p.to ? "late" : today >= p.from ? "now" : "";
+      b.className = "badge " + state;
+      b.textContent = state === "done" ? "已完成" : state === "late" ? "还剩 " + left + " 项" : state === "now" ? "进行中" : "";
+      b.hidden = !state;
+      d.querySelector(".ph-count").textContent = n + " / " + p.tasks.length;
+    });
+    document.querySelectorAll(".task").forEach((li) => {
+      const d = isDone({ id: li.dataset.id });
+      li.classList.toggle("done", d);
+      li.querySelector("input").checked = d;
+    });
+  }
+
+  build();
+  document.addEventListener("change", async (e) => {
+    const cb = e.target.closest('.task input[type="checkbox"]');
+    if (!cb) return;
+    const id = cb.closest(".task").dataset.id;
+    const next = cb.checked ? { done: true, doneAt: new Date().toISOString() } : { done: false, doneAt: null };
+    saved[id] = next;
+    render();
+    try {
+      await api("PUT", "/api/d/plan/" + encodeURIComponent(id), next);
+      $("#msg").textContent = "";
+    } catch (err) {
+      $("#msg").textContent = "没保存上：" + err.message + "。刷新页面后再试。";
+    }
+  });
+  api("GET", "/api/c/plan").then((j) => {
+    saved = Object.fromEntries(j.docs.map((d) => [d.id, d.data || {}]));
+    render();
+  }).catch((e) => { $("#msg").textContent = "读取进度失败：" + e.message; render(); });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -41,9 +41,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA, "ledger.db")
 STATIC = os.path.join(ROOT, "static")
-USER_COLLS = {"trades", "fixed", "config", "reading"}
+USER_COLLS = {"trades", "fixed", "config", "reading", "plan"}
 SHARED_COLLS = {"history", "candles", "watch"}  # market data: written only by the server, uid 0
-PAGES = {"/": "index.html", "/index.html": "index.html", "/dashboard": "dashboard.html", "/reading": "reading.html", "/account": "account.html"}
+PAGES = {"/": "index.html", "/index.html": "index.html", "/dashboard": "dashboard.html", "/reading": "reading.html", "/plan": "plan.html", "/account": "account.html"}
 PUBLIC_PAGES = {"/privacy": "privacy.html"}
 ASSETS = {"d3.min.js": "text/javascript; charset=utf-8"}
 NAME_RE = re.compile(r"^[A-Za-z0-9_一-鿿]{2,20}$")
