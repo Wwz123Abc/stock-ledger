@@ -193,6 +193,7 @@ input.px { width: 104px; text-align: right; font-family: var(--f-num); font-vari
 .pnl-chart svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 .pnl-mark { font-size: 9px; font-weight: 600; fill: var(--surface); font-family: var(--f-num); }
 .pnl-note { font-size: 10.5px; font-family: var(--f-num); }
+#assetStats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pnl-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .pnl-stats div { background: var(--surface); padding: 10px 14px; min-width: 0; }
 .pnl-stats dt { font-size: 12px; color: var(--muted); }
@@ -344,12 +345,13 @@ footer p { margin: 0 0 6px; }
 
   <section aria-labelledby="mix-h">
     <div class="head-row">
-      <div class="title"><h2 id="mix-h">资产占比</h2><details class="help"><summary aria-label="资产占比怎么算">?</summary><div class="help-body"><p>按总资产计算：每只股票、每笔国债和定期存款各占总资产的多少。股票按持仓表的现价，国债按持有到期的价值（含应计利息），定存按本金加已计利息，港股按当前汇率折成美元。</p><p>已到期的国债和定存已经回到储蓄账户，不再计入。账户里的活期现金没有记录，也不计入。</p><p>同一类用同一种颜色：蓝色是股票，紫色是国债，棕色是定期存款。表格最后一行是各类合计。</p></div></details></div>
+      <div class="title"><h2 id="mix-h">资产占比</h2><details class="help"><summary aria-label="资产占比怎么算">?</summary><div class="help-body"><p>按总资产计算：每只股票、每笔国债和定期存款各占总资产的多少。股票按持仓表的现价，国债按持有到期的价值（含应计利息），定存按本金加已计利息，港股按当前汇率折成美元。</p><p>已到期的国债和定存已经回到储蓄账户，不再计入。账户里的活期现金没有记录，也不计入。</p><p>同一类用同一种颜色：蓝色是股票，紫色是国债，棕色是定期存款。表格最后一行是各类合计。</p><p>现资产 = 现在所有持仓值多少钱。原始资产 = 你实际投进去、还没拿回来的钱：买股票花的钱（含费用）减去卖出拿回的钱，加上国债买入花的钱和定存本金；已到期的国债和定存本息回到储蓄账户后不再计入。两者之差就是盈亏，和收益走势的累计收益一致。</p></div></details></div>
       <p class="hint" id="mixSum"></p>
     </div>
+    <dl class="pnl-stats" id="assetStats" hidden></dl>
     <div class="mixbox">
       <div class="donut" id="mixChart">
-        <div class="ctr"><span class="k">总资产</span><span class="v" id="mixTotal">—</span></div>
+        <div class="ctr"><span class="k">现资产</span><span class="v" id="mixTotal">—</span></div>
         <div class="pnl-tip" id="mixTip" hidden></div>
       </div>
       <table id="mix">
@@ -1020,6 +1022,13 @@ TAL|好未来|TAL Education
     const unpriced = c.syms.some((s) => s.shares > 0 && !(Number(state.prices[s.symbol]) > 0));
     $("#mixSum").textContent = unpriced ? "有股票还没有价格，暂不计入；先在持仓表里填现价。" : items.length ? "共 " + items.length + " 项" : "";
     $("#mixTotal").textContent = total > 0 ? money(total) : "—";
+    // Original assets: the money put in and not yet taken back. Current value minus it is the total profit
+    // (unrealized + realized + Treasury and deposit income), the same figure as the profit trend.
+    const as = $("#assetStats"), profit = c.unreal + c.realized + fixedNow().income, original = total - profit;
+    const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
+    as.hidden = !(total > 0);
+    as.innerHTML = total > 0 ? stat("现资产", money(total), "", "持仓现在的价值") + stat("原始资产", money(original), "", "投入、还没拿回的本金") +
+      stat("盈亏", signed(profit), tone(profit), original > 0 ? pct((profit / original) * 100) : "") : "";
     if (!items.length || !(total > 0)) {
       // An empty grey ring keeps the chart's shape, so the centre label stays in place.
       box.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 300 300" aria-hidden="true"><circle cx="150" cy="150" r="91" fill="none" stroke="var(--line)" stroke-width="42"/></svg>');
