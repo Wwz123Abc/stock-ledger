@@ -497,7 +497,7 @@ footer p { margin: 0 0 6px; }
     <form id="tradeForm" novalidate>
       <div class="fields">
         <div class="field">
-          <label for="f-date">成交日期（按成交记录上的日期）</label>
+          <label for="f-date">成交日期（美国东部时间，按成交记录上的日期）</label>
           <input id="f-date" type="date" required>
         </div>
         <div class="field">
@@ -933,9 +933,11 @@ TAL|好未来|TAL Education
   const addDays = (s, n) => { const dt = parseD(s); dt.setUTCDate(dt.getUTCDate() + n); return fmtD(dt); };
   const weekOf = (s) => { const dt = parseD(s); dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7)); return fmtD(dt); };
   const md = (s) => { const [, m, d] = s.split("-"); return Number(m) + "/" + Number(d); };
-  function todayHK() {
+  // "Today" is the US Eastern date: trade dates, the latest point of the profit series and the calendar all follow
+  // the US market day, so a Beijing morning does not start a new day before New York has traded it.
+  function todayUS() {
     try {
-      return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     } catch (e) { return fmtD(new Date()); }
   }
   function stamp(iso) {
@@ -1056,7 +1058,7 @@ TAL|好未来|TAL Education
   const fixedStart = (f) => (f.kind === "bond" ? f.settle : f.start);
   const fixedTotal = (f) => (f.kind === "bond" ? bondAt(f, f.maturity, null).income : f.interest);
   function fixedNow() {
-    const d = todayHK();
+    const d = todayUS();
     let value = 0, cost = 0, income = 0;
     for (const f of state.fixed) { const r = fixedAt(f, d); if (r) { value += r.value; cost += r.cost; income += r.income; } }
     return { value, cost, income };
@@ -1080,7 +1082,7 @@ TAL|好未来|TAL Education
   const CLASS_NAME = { stk: "股票", bond: "国债", dep: "定期存款", cash: "现金" };
   const SHADES = [1, 0.7, 0.5, 0.36, 0.26];
   function mixItems(c) {
-    const d = todayHK(), items = [];
+    const d = todayUS(), items = [];
     for (const s of c.syms) if (s.shares > 0 && Number(state.prices[s.symbol]) > 0) items.push({ k: "stk", name: s.symbol, sub: nameOf(s.symbol), v: toUSD(s.mv, s.ccy) });
     for (const f of state.fixed) { const r = fixedAt(f, d); if (r && r.value > 0) items.push({ k: f.kind === "bond" ? "bond" : "dep", name: f.name, sub: f.note || "", v: r.value }); }
     for (const k of state.cash) if (k.amount > 0) items.push({ k: "cash", name: k.name, sub: "", v: toUSD(k.amount, k.currency) });
@@ -1196,7 +1198,7 @@ TAL|好未来|TAL Education
   $("#mix").addEventListener("pointerleave", () => mixFocus(null));
 
   function renderFixed() {
-    const tb = $("#fixed tbody"), ro = !db || state.canWrite === false, d = todayHK();
+    const tb = $("#fixed tbody"), ro = !db || state.canWrite === false, d = todayUS();
     const fx = fixedNow();
     $("#fixSum").textContent = state.fixed.length ? "合计 " + money(fx.value) + " · 已计收益 " + signed(fx.income) : "";
     if (!state.fixed.length) {
@@ -1290,7 +1292,7 @@ TAL|好未来|TAL Education
           : '<span class="muted">—</span>';
         const qt = state.quotes[s.symbol];
         const cap = qt && qt.date ? (qt.source === "手动" ? "手动填写 " + md(qt.date) : md(qt.date) + (qt.kind === "open" ? " 开盘" : qt.kind === "live" ? " 盘中" : " 收盘")) : "";
-        const sym = esc(s.symbol), prev = prevClose(s.symbol, qt && qt.date ? qt.date : todayHK());
+        const sym = esc(s.symbol), prev = prevClose(s.symbol, qt && qt.date ? qt.date : todayUS());
         const dayCell = px > 0 && prev > 0
           ? '<span class="' + tone(px - prev) + '">' + pct((px / prev - 1) * 100) + "<br><small>" + signed((px - prev) * s.shares, s.ccy) + "</small></span>"
           : '<span class="muted">—</span>';
@@ -1329,7 +1331,7 @@ TAL|好未来|TAL Education
       }
     }
     // With bonds or deposits, the last point is today, so accrued interest matches the summary.
-    if (state.fixed.length && todayHK() > (live || lastHist)) live = todayHK();
+    if (state.fixed.length && todayUS() > (live || lastHist)) live = todayUS();
     if (live && live !== lastHist) sorted.push(live);
     const pos = {}, px = {};
     let realized = 0, k = 0, prev = 0;
@@ -1406,7 +1408,7 @@ TAL|好未来|TAL Education
   // One year from the first investment. Before it ends, figures run to the latest day; after, to the plan's end.
   function renderYear(list, rows) {
     const start = rows[0].date, end = addMonths(start, 12), total = dayDiff(start, end);
-    const done = todayHK() >= end, upto = rows.filter((r) => r.date <= end), last = upto[upto.length - 1];
+    const done = todayUS() >= end, upto = rows.filter((r) => r.date <= end), last = upto[upto.length - 1];
     const days = Math.max(1, dayDiff(start, done ? end : last.date));
     const rate = days >= 30 ? xirr(cashFlows(list, last.date, last.value + last.fixedValue)) : null;
     const held = rate == null ? null : Math.pow(1 + rate, days / 365) - 1;
@@ -1446,7 +1448,7 @@ TAL|好未来|TAL Education
     };
     let html = "一二三四五六日".split("").map((w) => '<span class="wd">' + w + "</span>").join("") + '<span class="c none"></span>'.repeat(lead);
     for (let d = 1; d <= daysIn; d++) {
-      const ds = ym + "-" + String(d).padStart(2, "0"), r = byDate.get(ds), now = ds === todayHK() ? " today" : "";
+      const ds = ym + "-" + String(d).padStart(2, "0"), r = byDate.get(ds), now = ds === todayUS() ? " today" : "";
       if (!r) { html += '<span class="c' + now + '"><span class="d">' + d + "</span></span>"; continue; }
       const col = r.day > 0.004 ? "var(--up)" : r.day < -0.004 ? "var(--down)" : "", a = Math.round(14 + 50 * Math.min(1, Math.abs(r.day) / maxAbs));
       html += '<button type="button" class="c' + now + '" data-d="' + ds + '" aria-label="' + md(ds) + " " + signed(r.day) + '"' +
@@ -1528,7 +1530,7 @@ TAL|好未来|TAL Education
     $("#monSum").textContent = months.length + " 个月 · " + up + " 个月赚钱 · 月均 " + signed(last.total / months.length);
     const cell = (v) => '<td class="num ' + tone(v) + '">' + signed(v) + "</td>";
     tb.innerHTML = months.slice().reverse().map((m, i) =>
-      "<tr><td>" + label(m.key) + (i === 0 && m.last.date.slice(0, 7) === todayHK().slice(0, 7) ? "<small>本月，截至 " + md(m.last.date) + "</small>" : "") + "</td>" +
+      "<tr><td>" + label(m.key) + (i === 0 && m.last.date.slice(0, 7) === todayUS().slice(0, 7) ? "<small>本月，截至 " + md(m.last.date) + "</small>" : "") + "</td>" +
       cell(m.stock) + cell(m.fixed) + cell(m.pnl).replace('class="num', 'style="font-weight:600" class="num') +
       '<td class="num ' + (m.ret == null ? "" : tone(m.ret)) + '">' + (m.ret == null ? "—" : pct(m.ret * 100)) + "</td>" +
       '<td class="num ' + tone(m.last.total) + '">' + signed(m.last.total) + "</td></tr>").join("");
@@ -1947,7 +1949,7 @@ TAL|好未来|TAL Education
   // Moves money in or out of a cash account; returns a line for the status message.
   async function moveCash(acc, delta, undo) {
     try {
-      await db.doc("cash/" + acc.id).update({ amount: r2(acc.amount + delta), date: todayHK() });
+      await db.doc("cash/" + acc.id).update({ amount: r2(acc.amount + delta), date: todayUS() });
       const m = money(Math.abs(delta), acc.currency);
       return delta < 0 ? (undo ? "已从" + acc.name + "扣回 " : "已从" + acc.name + "扣款 ") + m + "。" : (undo ? "已退回 " + m + " 到" : "已存入 " + m + " 到") + acc.name + "。";
     } catch (err) {
@@ -1980,7 +1982,7 @@ TAL|好未来|TAL Education
     if (!(v >= 0)) return;
     const sym = el.dataset.sym;
     state.prices[sym] = v;
-    state.quotes[sym] = Object.assign({}, state.quotes[sym] || {}, { date: todayHK(), source: "手动" });
+    state.quotes[sym] = Object.assign({}, state.quotes[sym] || {}, { date: todayUS(), source: "手动" });
     saveConfig();
     render();
   });
@@ -2103,7 +2105,7 @@ TAL|好未来|TAL Education
     const v = parseFloat(el.value);
     if (!(v >= 0)) { setStatus("现金金额不能是负数，没有就填 0。", "err"); render(); return; }
     try {
-      await db.doc("cash/" + el.dataset.id).update({ amount: v, date: todayHK() });
+      await db.doc("cash/" + el.dataset.id).update({ amount: v, date: todayUS() });
       setStatus("已更新现金余额。", "ok");
     } catch (err) { setStatus(errText(err), "err"); render(); }
   });
@@ -2132,7 +2134,7 @@ TAL|好未来|TAL Education
     const btn = $("#cashSave");
     btn.disabled = true;
     try {
-      await db.collection("cash").add({ name, currency, amount, date: todayHK(), createdAt: new Date().toISOString() });
+      await db.collection("cash").add({ name, currency, amount, date: todayUS(), createdAt: new Date().toISOString() });
       say("已保存：" + name + " " + money(amount, currency) + "。", "ok");
       $("#cashForm").reset();
     } catch (err) {
@@ -2147,7 +2149,7 @@ TAL|好未来|TAL Education
     const raw = el.value.trim(), v = parseFloat(raw);
     if (raw !== "" && !(v > 50 && v < 150)) { setStatus("参考卖出价按面值的百分比填，例如 98.40。", "err"); render(); return; }
     try {
-      await db.doc("fixed/" + el.dataset.id).update(raw === "" ? { markPrice: null, markDate: null } : { markPrice: v, markDate: todayHK() });
+      await db.doc("fixed/" + el.dataset.id).update(raw === "" ? { markPrice: null, markDate: null } : { markPrice: v, markDate: todayUS() });
     } catch (err) { setStatus(errText(err), "err"); render(); }
   });
   $("#fixed").addEventListener("click", async (e) => {
@@ -2391,7 +2393,7 @@ TAL|好未来|TAL Education
   });
 
   // ---------- start ----------
-  $("#f-date").value = todayHK();
+  $("#f-date").value = todayUS();
   updateSymHint();
   render();
 
