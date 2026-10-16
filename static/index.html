@@ -111,6 +111,8 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 #holdings { min-width: 860px; }
 #log { min-width: 760px; }
 #monthly { min-width: 640px; }
+#yrStats .bar { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 6px 0 2px; }
+#yrStats .bar span { display: block; height: 100%; background: var(--accent); }
 #monthly td:first-child small { display: block; font-size: 12px; color: var(--muted); }
 .logbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .logbar .seg label { padding: 5px 14px; font-size: 13px; }
@@ -384,6 +386,14 @@ footer p { margin: 0 0 6px; }
       <div class="pnl-tip" id="pnlTip" hidden></div>
     </div>
     <dl class="pnl-stats" id="pnlStats" hidden></dl>
+  </section>
+
+  <section aria-labelledby="yr-h">
+    <div class="head-row">
+      <div class="title"><h2 id="yr-h">一年投资计划</h2><details class="help"><summary aria-label="一年投资计划怎么算">?</summary><div class="help-body"><p>从第一笔买入或存款那天起算一年。到期前显示至今的结果，满一年后固定显示第一年的结果。</p><p>至今收益率按资金加权计算：中途追加的钱只按它投入以后的时间计算收益，所以和“盈亏 ÷ 本金”略有不同。年化收益率是把至今的表现折算成一年（XIRR），不满一年时会被放大，只能参考；满一年时它就是这一年的实际收益率。</p><p>日收益是最近一个交易日（或今天）相比前一天的盈亏变化；日均是至今盈亏 ÷ 已过天数。现金不计入这些收益。</p></div></details></div>
+      <p class="hint" id="yrSum"></p>
+    </div>
+    <dl class="pnl-stats" id="yrStats"><div><dt>进度</dt><dd>—</dd></div></dl>
   </section>
 
   <section aria-labelledby="mon-h">
@@ -1363,9 +1373,32 @@ TAL|好未来|TAL Education
     for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; if (npv(lo) * npv(m) <= 0) hi = m; else lo = m; }
     return (lo + hi) / 2;
   }
+  // One year from the first investment. Before it ends, figures run to the latest day; after, to the plan's end.
+  function renderYear(list, rows) {
+    const start = rows[0].date, end = addMonths(start, 12), total = dayDiff(start, end);
+    const done = todayHK() >= end, upto = rows.filter((r) => r.date <= end), last = upto[upto.length - 1];
+    const days = Math.max(1, dayDiff(start, done ? end : last.date));
+    const rate = days >= 30 ? xirr(cashFlows(list, last.date, last.value + last.fixedValue)) : null;
+    const held = rate == null ? null : Math.pow(1 + rate, days / 365) - 1;
+    const prev = upto.length > 1 ? upto[upto.length - 2] : null, prevVal = prev ? prev.value + prev.fixedValue : 0;
+    const daily = last.day, dailyPct = prevVal > 0 ? daily / prevVal : null;
+    const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
+    const span = start.replace(/-0?/g, "/") + " – " + end.replace(/-0?/g, "/");
+    $("#yrStats").innerHTML =
+      stat("进度", done ? "已满一年" : "第 " + Math.min(days, total) + " / " + total + " 天",
+        "", '<span class="bar"><span style="width:' + Math.min(100, (days / total) * 100) + '%"></span></span>' + span) +
+      stat(done ? "一年盈亏" : "至今盈亏", signed(last.total), tone(last.total), held == null ? (last.pct == null ? "" : "按投入成本 " + pct(last.pct * 100)) : "资金加权 " + pct(held * 100)) +
+      stat(done ? "一年收益率" : "年化收益率", rate == null ? "—" : pct(rate * 100), rate == null ? "" : tone(rate),
+        rate == null ? "满 30 天后显示" : done ? "第一年的实际收益率" : "不满一年，仅供参考") +
+      stat("日收益", signed(daily), tone(daily), (dailyPct == null ? "" : pct(dailyPct * 100) + " · ") + md(last.date) + (last.live ? " 最新" : " 收盘") + " · 日均 " + signed(last.total / days));
+    $("#yrSum").textContent = done ? "第一年已结束" : "还剩 " + Math.max(0, total - days) + " 天";
+  }
+
   function renderMonthly(list) {
     const tb = $("#monthly tbody"), stats = $("#monStats"), rows = pnlSeries(list);
     if (!rows.length) {
+      $("#yrStats").innerHTML = '<div><dt>进度</dt><dd>—<small>录入第一笔买入或存款后开始计算</small></dd></div>';
+      $("#yrSum").textContent = "";
       tb.innerHTML = '<tr><td colspan="6" class="empty">' + (!state.ready || !state.histReady ? "正在读取…" : "录入第一笔买入或存款，并点“刷新数据”后，这里按月汇总盈亏。") + "</td></tr>";
       stats.hidden = true;
       $("#monSum").textContent = "";
@@ -1390,6 +1423,7 @@ TAL|好未来|TAL Education
     }
     const last = rows[rows.length - 1], first = rows[0].date, days = dayDiff(first, last.date);
     const rate = days >= 30 ? xirr(cashFlows(list, last.date, last.value + last.fixedValue)) : null;
+    renderYear(list, rows);
     const best = months.reduce((a, b) => (b.pnl > a.pnl ? b : a)), worst = months.reduce((a, b) => (b.pnl < a.pnl ? b : a));
     const label = (k) => k.slice(0, 4) + " 年 " + Number(k.slice(5)) + " 月";
     const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
