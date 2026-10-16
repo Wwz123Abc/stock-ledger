@@ -111,6 +111,21 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 #holdings { min-width: 860px; }
 #log { min-width: 760px; }
 #monthly { min-width: 640px; }
+.cal { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 12px; display: grid; gap: 8px; }
+.cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cal-head b { font-size: 15px; min-width: 7.5em; text-align: center; }
+.cal-head .hint { flex: 1; text-align: right; font-family: var(--f-num); }
+.cal-head .mini:disabled { opacity: .35; cursor: default; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-grid .wd { font-size: 12px; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.cal-grid .c { min-height: 54px; border-radius: 6px; padding: 4px 6px; display: grid; align-content: space-between; background: var(--bg); border: 0; font: inherit; color: var(--ink); text-align: left; }
+.cal-grid .c.none { background: transparent; }
+.cal-grid .c .d { font-size: 11px; color: var(--muted); }
+.cal-grid .c .v { font-size: 12px; font-weight: 600; text-align: right; font-family: var(--f-num); white-space: nowrap; overflow: hidden; }
+.cal-grid button.c { cursor: pointer; }
+.cal-grid button.c:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cal-grid .c.today { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cal-grid .c.on { box-shadow: inset 0 0 0 2px var(--ink); }
 #yrStats .bar { display: block; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 6px 0 2px; }
 #yrStats .bar span { display: block; height: 100%; background: var(--accent); }
 #monthly td:first-child small { display: block; font-size: 12px; color: var(--muted); }
@@ -252,6 +267,11 @@ footer p { margin: 0 0 6px; }
   .pnl-sub { text-align: left; }
   /* Trade log as cards: symbol and amount, then date, shares and price, then note and actions */
   #mix thead th:nth-child(2), #mix tbody td:nth-child(2) { display: none; }
+  /* Profit calendar on phones: smaller cells */
+  .cal { padding: 10px 8px; }
+  .cal-grid { gap: 3px; }
+  .cal-grid .c { min-height: 46px; padding: 3px 4px; }
+  .cal-grid .c .v { font-size: 11px; }
   /* Cash on phones: name, amount and actions; the update date is dropped */
   #cash td.fname { min-width: 0; }
   #cash th:nth-child(3), #cash td:nth-child(3) { display: none; }
@@ -394,6 +414,16 @@ footer p { margin: 0 0 6px; }
       <p class="hint" id="yrSum"></p>
     </div>
     <dl class="pnl-stats" id="yrStats"><div><dt>进度</dt><dd>—</dd></div></dl>
+    <div class="cal" id="yrCal" hidden>
+      <div class="cal-head">
+        <button type="button" class="mini" id="calPrev" aria-label="上个月">‹</button>
+        <b id="calTitle"></b>
+        <button type="button" class="mini" id="calNext" aria-label="下个月">›</button>
+        <span class="hint" id="calSum"></span>
+      </div>
+      <div class="cal-grid" id="calGrid" role="grid" aria-label="收益日历"></div>
+      <p class="hint" id="calTip">点格子查看当天明细。</p>
+    </div>
   </section>
 
   <section aria-labelledby="mon-h">
@@ -1392,12 +1422,72 @@ TAL|好未来|TAL Education
         rate == null ? "满 30 天后显示" : done ? "第一年的实际收益率" : "不满一年，仅供参考") +
       stat("日收益", signed(daily), tone(daily), (dailyPct == null ? "" : pct(dailyPct * 100) + " · ") + md(last.date) + (last.live ? " 最新" : " 收盘") + " · 日均 " + signed(last.total / days));
     $("#yrSum").textContent = done ? "第一年已结束" : "还剩 " + Math.max(0, total - days) + " 天";
+    cal = { rows, start, month: cal.month };
+    renderCalendar();
   }
+
+  // ---------- profit calendar ----------
+  let cal = { rows: [], start: "", month: null };
+  function renderCalendar() {
+    const { rows, start } = cal, box = $("#yrCal");
+    box.hidden = !rows.length;
+    if (!rows.length) return;
+    const firstMonth = start.slice(0, 7), lastMonth = rows[rows.length - 1].date.slice(0, 7);
+    if (!cal.month || cal.month > lastMonth || cal.month < firstMonth) cal.month = lastMonth;
+    const ym = cal.month, [y, m] = ym.split("-").map(Number);
+    const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;  // Monday first
+    const byDate = new Map(rows.map((r) => [r.date, r]));
+    const inMonth = rows.filter((r) => r.date.slice(0, 7) === ym);
+    const maxAbs = Math.max(0.01, ...inMonth.map((r) => Math.abs(r.day)));
+    const short = (v) => {
+      const a = Math.abs(v), s = v > 0.004 ? "+" : v < -0.004 ? "−" : "";
+      const narrow = matchMedia("(max-width: 680px)").matches;  // phone cells fit about five characters
+      return s + (a >= 1000 ? (a / 1000).toFixed(1) + "k" : a >= 100 || (narrow && a >= 10) ? a.toFixed(0) : a.toFixed(narrow ? 1 : 2));
+    };
+    let html = "一二三四五六日".split("").map((w) => '<span class="wd">' + w + "</span>").join("") + '<span class="c none"></span>'.repeat(lead);
+    for (let d = 1; d <= daysIn; d++) {
+      const ds = ym + "-" + String(d).padStart(2, "0"), r = byDate.get(ds), now = ds === todayHK() ? " today" : "";
+      if (!r) { html += '<span class="c' + now + '"><span class="d">' + d + "</span></span>"; continue; }
+      const col = r.day > 0.004 ? "var(--up)" : r.day < -0.004 ? "var(--down)" : "", a = Math.round(14 + 50 * Math.min(1, Math.abs(r.day) / maxAbs));
+      html += '<button type="button" class="c' + now + '" data-d="' + ds + '" aria-label="' + md(ds) + " " + signed(r.day) + '"' +
+        (col ? ' style="background:color-mix(in srgb, ' + col + " " + a + '%, var(--surface))"' : "") + '><span class="d">' + d + '</span><span class="v">' + short(r.day) + "</span></button>";
+    }
+    $("#calGrid").innerHTML = html;
+    $("#calTitle").textContent = y + " 年 " + m + " 月";
+    const sum = inMonth.reduce((t, r) => t + r.day, 0), up = inMonth.filter((r) => r.day > 0.004).length, down = inMonth.filter((r) => r.day < -0.004).length;
+    const sumEl = $("#calSum");
+    sumEl.textContent = "当月 " + signed(sum) + " · 赚 " + up + " 天 · 亏 " + down + " 天";
+    sumEl.className = "hint " + tone(sum);
+    $("#calPrev").disabled = ym <= firstMonth;
+    $("#calNext").disabled = ym >= lastMonth;
+  }
+  function calGo(step) {
+    cal.month = addMonths(cal.month + "-01", step).slice(0, 7);
+    const tip = $("#calTip");
+    tip.className = "hint";
+    tip.textContent = "点格子查看当天明细。";
+    renderCalendar();
+  }
+  $("#calPrev").addEventListener("click", () => calGo(-1));
+  $("#calNext").addEventListener("click", () => calGo(1));
+  $("#calGrid").addEventListener("click", (e) => {
+    const b = e.target.closest("button.c");
+    if (!b) return;
+    const i = cal.rows.findIndex((r) => r.date === b.dataset.d), r = cal.rows[i], prev = cal.rows[i - 1];
+    const pv = prev ? prev.value + prev.fixedValue : 0;
+    document.querySelectorAll("#calGrid .c.on").forEach((c) => c.classList.remove("on"));
+    b.classList.add("on");
+    const tip = $("#calTip");
+    tip.className = "hint " + tone(r.day);
+    tip.textContent = md(r.date) + " 周" + WD[parseD(r.date).getUTCDay()] + "：" + signed(r.day) + (pv > 0 ? "（" + pct((r.day / pv) * 100) + "）" : "") +
+      " · 累计 " + signed(r.total) + (r.live ? " · 按最新价" : "");
+  });
 
   function renderMonthly(list) {
     const tb = $("#monthly tbody"), stats = $("#monStats"), rows = pnlSeries(list);
     if (!rows.length) {
       $("#yrStats").innerHTML = '<div><dt>进度</dt><dd>—<small>录入第一笔买入或存款后开始计算</small></dd></div>';
+      $("#yrCal").hidden = true;
       $("#yrSum").textContent = "";
       tb.innerHTML = '<tr><td colspan="6" class="empty">' + (!state.ready || !state.histReady ? "正在读取…" : "录入第一笔买入或存款，并点“刷新数据”后，这里按月汇总盈亏。") + "</td></tr>";
       stats.hidden = true;
