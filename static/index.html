@@ -144,6 +144,8 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .sw.bond { background: var(--c-bond); }
 .sw.dep { background: var(--c-dep); }
 .sw.cash { background: var(--c-cash); }
+.paycash { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.paycash input { width: 18px; height: 18px; margin: 0; flex: none; accent-color: var(--accent); }
 td.fname { white-space: normal; min-width: 170px; font-weight: 500; }
 td.fname .nm { display: block; font-weight: 400; font-size: 12px; color: var(--muted); font-family: var(--f-num); }
 #fixForm fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -427,7 +429,7 @@ footer p { margin: 0 0 6px; }
 
   <section aria-labelledby="cash-h">
     <div class="head-row">
-      <div class="title"><h2 id="cash-h">现金</h2><details class="help"><summary aria-label="现金怎么算">?</summary><div class="help-body"><p>账户里留着、还没投资的钱，比如美元储蓄、港元储蓄。计入资产占比、现资产和原始资产；不计入收益走势、月收益率和年化收益率，因为现金在这里不产生收益，算进去会把投资的收益率拉低。</p><p>余额变了就直接改金额，改完自动保存。港元按当前汇率折成美元。</p></div></details></div>
+      <div class="title"><h2 id="cash-h">现金</h2><details class="help"><summary aria-label="现金怎么算">?</summary><div class="help-body"><p>账户里留着、还没投资的钱，比如美元储蓄、港元储蓄。计入资产占比、现资产和原始资产；不计入收益走势、月收益率和年化收益率，因为现金在这里不产生收益，算进去会把投资的收益率拉低。</p><p>余额变了就直接改金额，改完自动保存。港元按当前汇率折成美元。</p><p>在“记一笔”里买入股票、国债或存定期时，默认从同币种的第一个现金账户扣款，卖出所得存回这个账户；删除那条记录，钱会退回。批量导入的交易不会扣款。国债票息、定存到期、股票分红到账时，请在这里手动加上。</p></div></details></div>
       <p class="hint" id="cashSum"></p>
     </div>
     <div class="table-wrap">
@@ -491,6 +493,7 @@ footer p { margin: 0 0 6px; }
           <input id="f-note" type="text" maxlength="120" placeholder="例如：成交单编号">
         </div>
       </div>
+      <label class="paycash" id="f-pay-row" hidden><input type="checkbox" id="f-pay" checked><span id="f-pay-txt"></span></label>
       <div class="form-foot">
         <button class="btn" type="submit" id="saveBtn">保存这笔</button>
         <p id="formMsg">美股佣金为 0 时费用填 0；港股买卖都有印花税等代收费，按成交单填。</p>
@@ -521,6 +524,7 @@ footer p { margin: 0 0 6px; }
         <div class="field"><label for="b-acc">买入时付的应计利息（可不填）</label><input id="b-acc" type="number" inputmode="decimal" step="any" min="0" placeholder="不填就按日期算"><span class="sub">交易详情里的“参考最高累计利息”。</span></div>
       </fieldset>
       <div class="fields"><div class="field wide"><label for="x-note">备注（可不填）</label><input id="x-note" type="text" maxlength="120" placeholder="例如：成交单编号、存款编号"></div></div>
+      <label class="paycash" id="x-pay-row" hidden><input type="checkbox" id="x-pay" checked><span id="x-pay-txt"></span></label>
       <div class="form-foot">
         <button class="btn" type="submit" id="fixSave">保存</button>
         <p id="fixMsg" class="hint"></p>
@@ -1694,6 +1698,7 @@ TAL|好未来|TAL Education
     renderHoldings(c);
     renderFixed();
     renderCash();
+    updatePay();
     renderLog(list);
     renderSymList(c);
   }
@@ -1801,7 +1806,37 @@ TAL|好未来|TAL Education
     if (!raw.trim()) sub.textContent = "可搜代码、中文名或英文名。列表里没有的代码也能直接填。";
     else if (!sym) sub.textContent = "没找到。美股填代码如 AAPL、BRK.B，港股填数字如 0700，也可以从下拉里选。";
     else sub.textContent = (hk ? "港股 " : "美股 ") + sym + (nameOf(sym) ? " · " + nameOf(sym) : (EN[sym] ? " · " + EN[sym] : ""));
+    if (state.cash) updatePay();
   }
+
+  // ---------- paying from cash ----------
+  const payAccount = (ccy) => state.cash.find((k) => k.currency === ccy) || null;
+  function updatePay() {
+    const sym = resolveSym(symIn.value), sell = $("#side-sell").checked;
+    const rows = [["#f-pay-row", "#f-pay-txt", payAccount(sym && isHK(sym) ? "HKD" : "USD"), sell],
+      ["#x-pay-row", "#x-pay-txt", payAccount($("#ek-bond").checked ? "USD" : $("#d-ccy").value), false]];
+    for (const [row, txt, acc, into] of rows) {
+      $(row).hidden = !acc;
+      if (acc) $(txt).textContent = (into ? "卖出所得存入 " + acc.name : "从 " + acc.name + " 扣款") + "（余额 " + money(acc.amount, acc.currency) + "）";
+    }
+  }
+  // Moves money in or out of a cash account; returns a line for the status message.
+  async function moveCash(acc, delta, undo) {
+    try {
+      await db.doc("cash/" + acc.id).update({ amount: r2(acc.amount + delta), date: todayHK() });
+      const m = money(Math.abs(delta), acc.currency);
+      return delta < 0 ? (undo ? "已从" + acc.name + "扣回 " : "已从" + acc.name + "扣款 ") + m + "。" : (undo ? "已退回 " + m + " 到" : "已存入 " + m + " 到") + acc.name + "。";
+    } catch (err) {
+      return "但" + acc.name + "的余额没更新上，请在现金表里手动改。";
+    }
+  }
+  // Puts back what a record took out of (or paid into) cash, when that account still exists.
+  async function undoCash(link) {
+    const acc = link && state.cash.find((k) => k.id === link.id);
+    return acc ? moveCash(acc, -link.delta, true) : "";
+  }
+  document.querySelectorAll('input[name="side"], input[name="ekind"]').forEach((r) => r.addEventListener("change", updatePay));
+  $("#d-ccy").addEventListener("change", updatePay);
 
   // ---------- writes ----------
   let cfgChain = Promise.resolve();
@@ -1845,15 +1880,18 @@ TAL|好未来|TAL Education
     const ccy = ccyOf(symbol);
     if (!(px > 0)) { formMsg("成交价要大于 0，单位是" + (ccy === "HKD" ? "港元" : "美元") + "。", "err"); return; }
     if (!(fees >= 0)) { formMsg("费用不能是负数，没有就填 0。", "err"); return; }
+    const acc = !$("#f-pay-row").hidden && $("#f-pay").checked ? payAccount(ccy) : null;
+    const delta = r2(side === "buy" ? -(shares * px + fees) : shares * px - fees);
+    if (acc && acc.amount + delta < -0.005) { formMsg(acc.name + "余额不够（" + money(acc.amount, acc.currency) + "）。先在现金表里更新余额，或者取消勾选扣款。", "err"); return; }
     const btn = $("#saveBtn");
     btn.disabled = true;
     try {
-      await db.collection("trades").add({
-        date, side, symbol, market: isHK(symbol) ? "HK" : "US", currency: ccy,
-        shares, price: px, fees, note, createdAt: new Date().toISOString(),
-      });
+      const trade = { date, side, symbol, market: isHK(symbol) ? "HK" : "US", currency: ccy, shares, price: px, fees, note, createdAt: new Date().toISOString() };
+      if (acc) trade.cash = { id: acc.id, delta };
+      await db.collection("trades").add(trade);
+      const paid = acc ? await moveCash(acc, delta) : "";
       const fresh = !(Number(state.prices[symbol]) > 0);
-      formMsg("已保存：" + md(date) + " " + (side === "buy" ? "买入" : "卖出") + " " + symbol + " " + nfQ.format(shares) + " 股。" +
+      formMsg("已保存：" + md(date) + " " + (side === "buy" ? "买入" : "卖出") + " " + symbol + " " + nfQ.format(shares) + " 股。" + paid +
         (fresh ? "点“刷新数据”后这只股票会有价格，也可以先在持仓表里手动填。" : ""), "ok");
       $("#f-qty").value = ""; $("#f-price").value = ""; $("#f-fee").value = "0"; $("#f-note").value = "";
     } catch (err) {
@@ -1872,9 +1910,10 @@ TAL|好未来|TAL Education
     if (act === "confirm" && db) {
       b.disabled = true;
       try {
+        const t = state.trades.find((x) => x.id === b.dataset.id);
         await db.doc("trades/" + b.dataset.id).delete();
         state.pendingDelete = null;
-        setStatus("已删除一笔记录。", "ok");
+        setStatus("已删除一笔记录。" + (await undoCash(t && t.cash)), "ok");
       } catch (err) {
         setStatus(errText(err), "err");
         render();
@@ -1918,11 +1957,15 @@ TAL|好未来|TAL Education
         name: $("#x-name").value.trim().slice(0, 60) || (currency === "HKD" ? "港元" : "美元") + "定期" };
     }
     doc.note = note; doc.createdAt = new Date().toISOString();
+    const acc = !$("#x-pay-row").hidden && $("#x-pay").checked ? payAccount(doc.currency) : null;
+    const cost = r2(doc.kind === "bond" ? (doc.face * doc.price) / 100 + doc.accruedPaid : doc.principal);
+    if (acc && acc.amount - cost < -0.005) { fixMsg(acc.name + "余额不够（" + money(acc.amount, acc.currency) + "）。先在现金表里更新余额，或者取消勾选扣款。", "err"); return; }
+    if (acc) doc.cash = { id: acc.id, delta: -cost };
     const btn = $("#fixSave");
     btn.disabled = true;
     try {
       await db.collection("fixed").add(doc);
-      fixMsg("已保存：" + doc.name + "。", "ok");
+      fixMsg("已保存：" + doc.name + "。" + (acc ? await moveCash(acc, -cost) : ""), "ok");
       $("#fixForm").reset();
     } catch (err) {
       fixMsg(errText(err), "err");
@@ -1992,9 +2035,10 @@ TAL|好未来|TAL Education
     if (act === "confirm" && db) {
       b.disabled = true;
       try {
+        const f = state.fixed.find((x) => x.id === b.dataset.id);
         await db.doc("fixed/" + b.dataset.id).delete();
         state.pendingFix = null;
-        setStatus("已删除一条国债或定存记录。", "ok");
+        setStatus("已删除一条国债或定存记录。" + (await undoCash(f && f.cash)), "ok");
       } catch (err) { setStatus(errText(err), "err"); render(); }
     }
   });
@@ -2261,7 +2305,7 @@ TAL|好未来|TAL Education
         currency: x.currency === "HKD" ? "HKD" : "USD", note: x.note || "", isin: x.isin || "",
         principal: num(x.principal), rate: num(x.rate), start: x.start, interest: num(x.interest),
         face: num(x.face), price: num(x.price), coupon: num(x.coupon), freq: num(x.freq) || 2, settle: x.settle,
-        accruedPaid: num(x.accruedPaid) || 0, markPrice: num(x.markPrice), markDate: x.markDate || "", maturity: x.maturity,
+        accruedPaid: num(x.accruedPaid) || 0, markPrice: num(x.markPrice), markDate: x.markDate || "", maturity: x.maturity, cash: x.cash || null,
       };
     }).filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.maturity) && /^\d{4}-\d{2}-\d{2}$/.test(fixedStart(f) || "") &&
       (f.kind === "bond" ? f.face > 0 && f.price > 0 && f.coupon >= 0 : f.principal > 0 && f.interest >= 0));
