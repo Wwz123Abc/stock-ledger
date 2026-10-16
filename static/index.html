@@ -25,6 +25,7 @@
   --c-stk: #2B5784;
   --c-bond: #7A5CA8;
   --c-dep: #A8742A;
+  --c-cash: #2F8574;
   --f-display: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --f-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --f-num: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
@@ -34,7 +35,7 @@
     --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540;
     --accent: #82ABDA; --accent-soft: #1E2D3F; --on-accent: #0E1620;
     --up: #4DC28A; --down: #F0695D; --warn: #E0A84A;
-    --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062;
+    --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062; --c-cash: #63C2AE;
     color-scheme: dark;
   }
 }
@@ -42,7 +43,7 @@
   --bg: #11161C; --surface: #19212A; --ink: #E5EAF0; --muted: #95A2AF; --line: #2B3540;
   --accent: #82ABDA; --accent-soft: #1E2D3F; --on-accent: #0E1620;
   --up: #4DC28A; --down: #F0695D; --warn: #E0A84A;
-  --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062;
+  --c-stk: #82ABDA; --c-bond: #B59BE0; --c-dep: #E0B062; --c-cash: #63C2AE;
   color-scheme: dark;
 }
 
@@ -142,12 +143,14 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .sw.stk { background: var(--c-stk); }
 .sw.bond { background: var(--c-bond); }
 .sw.dep { background: var(--c-dep); }
+.sw.cash { background: var(--c-cash); }
 td.fname { white-space: normal; min-width: 170px; font-weight: 500; }
 td.fname .nm { display: block; font-weight: 400; font-size: 12px; color: var(--muted); font-family: var(--f-num); }
 #fixForm fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 #fixForm fieldset[hidden], form[hidden] { display: none; }
 .seg input:checked + label:not(.b):not(.s) { background: var(--accent-soft); color: var(--accent); }
-#fixMsg[data-kind="ok"] { color: var(--accent); }
+#fixMsg[data-kind="ok"], #cashMsg[data-kind="ok"] { color: var(--accent); }
+#cashMsg[data-kind="err"] { color: var(--warn); }
 #fixMsg[data-kind="err"] { color: var(--warn); }
 th { font-weight: 500; font-size: 12px; letter-spacing: .04em; color: var(--muted); text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
@@ -245,6 +248,10 @@ footer p { margin: 0 0 6px; }
   .pnl-sub { text-align: left; }
   /* Trade log as cards: symbol and amount, then date, shares and price, then note and actions */
   #mix thead th:nth-child(2), #mix tbody td:nth-child(2) { display: none; }
+  /* Cash on phones: name, amount and actions; the update date is dropped */
+  #cash td.fname { min-width: 0; }
+  #cash th:nth-child(3), #cash td:nth-child(3) { display: none; }
+  #cash th, #cash td { padding: 10px 8px; }
   /* Monthly summary on phones: month, P&L, return and running total */
   #monthly { min-width: 0; }
   #monthly th:nth-child(2), #monthly td:nth-child(2), #monthly th:nth-child(3), #monthly td:nth-child(3) { display: none; }
@@ -345,7 +352,7 @@ footer p { margin: 0 0 6px; }
 
   <section aria-labelledby="mix-h">
     <div class="head-row">
-      <div class="title"><h2 id="mix-h">资产占比</h2><details class="help"><summary aria-label="资产占比怎么算">?</summary><div class="help-body"><p>按总资产计算：每只股票、每笔国债和定期存款各占总资产的多少。股票按持仓表的现价，国债按持有到期的价值（含应计利息），定存按本金加已计利息，港股按当前汇率折成美元。</p><p>已到期的国债和定存已经回到储蓄账户，不再计入。账户里的活期现金没有记录，也不计入。</p><p>同一类用同一种颜色：蓝色是股票，紫色是国债，棕色是定期存款。表格最后一行是各类合计。</p><p>现资产 = 现在所有持仓值多少钱。原始资产 = 你实际投进去、还没拿回来的钱：买股票花的钱（含费用）减去卖出拿回的钱，加上国债买入花的钱和定存本金；已到期的国债和定存本息回到储蓄账户后不再计入。两者之差就是盈亏，和收益走势的累计收益一致。</p></div></details></div>
+      <div class="title"><h2 id="mix-h">资产占比</h2><details class="help"><summary aria-label="资产占比怎么算">?</summary><div class="help-body"><p>按总资产计算：每只股票、每笔国债和定期存款各占总资产的多少。股票按持仓表的现价，国债按持有到期的价值（含应计利息），定存按本金加已计利息，港股按当前汇率折成美元。</p><p>已到期的国债和定存已经回到储蓄账户，不再计入。账户里的活期现金没有记录，也不计入。</p><p>同一类用同一种颜色：蓝色是股票，紫色是国债，棕色是定期存款，青绿色是现金。表格最后一行是各类合计。</p><p>现资产 = 现在所有持仓值多少钱。原始资产 = 你实际投进去、还没拿回来的钱：买股票花的钱（含费用）减去卖出拿回的钱，加上国债买入花的钱、定存本金和现金余额；已到期的国债和定存本息回到储蓄账户后不再计入。两者之差就是盈亏，和收益走势的累计收益一致。</p></div></details></div>
       <p class="hint" id="mixSum"></p>
     </div>
     <dl class="pnl-stats" id="assetStats" hidden></dl>
@@ -418,6 +425,19 @@ footer p { margin: 0 0 6px; }
     </div>
   </section>
 
+  <section aria-labelledby="cash-h">
+    <div class="head-row">
+      <div class="title"><h2 id="cash-h">现金</h2><details class="help"><summary aria-label="现金怎么算">?</summary><div class="help-body"><p>账户里留着、还没投资的钱，比如美元储蓄、港元储蓄。计入资产占比、现资产和原始资产；不计入收益走势、月收益率和年化收益率，因为现金在这里不产生收益，算进去会把投资的收益率拉低。</p><p>余额变了就直接改金额，改完自动保存。港元按当前汇率折成美元。</p></div></details></div>
+      <p class="hint" id="cashSum"></p>
+    </div>
+    <div class="table-wrap">
+      <table id="cash">
+        <thead><tr><th>名称</th><th class="num">金额</th><th>更新于</th><th></th></tr></thead>
+        <tbody><tr><td colspan="4" class="empty">正在读取…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <dialog id="entry" aria-labelledby="entry-h">
     <div class="dlg-head">
       <h2 id="entry-h">记一笔</h2>
@@ -429,6 +449,7 @@ footer p { margin: 0 0 6px; }
         <input type="radio" name="ekind" id="ek-stk" value="stk" checked><label for="ek-stk">股票</label>
         <input type="radio" name="ekind" id="ek-bond" value="bond"><label for="ek-bond">国债</label>
         <input type="radio" name="ekind" id="ek-dep" value="deposit"><label for="ek-dep">定期存款</label>
+        <input type="radio" name="ekind" id="ek-cash" value="cash"><label for="ek-cash">现金</label>
       </div>
     </div>
     <form id="tradeForm" novalidate>
@@ -503,6 +524,17 @@ footer p { margin: 0 0 6px; }
       <div class="form-foot">
         <button class="btn" type="submit" id="fixSave">保存</button>
         <p id="fixMsg" class="hint"></p>
+      </div>
+    </form>
+    <form id="cashForm" novalidate hidden>
+      <div class="fields">
+        <div class="field wide"><label for="c-name">名称</label><input id="c-name" type="text" maxlength="60" placeholder="例如：汇丰美元储蓄"></div>
+        <div class="field"><label for="c-ccy">币种</label><select id="c-ccy"><option value="USD">美元</option><option value="HKD">港元</option></select></div>
+        <div class="field"><label for="c-amt">金额</label><input id="c-amt" type="number" inputmode="decimal" step="any" min="0"></div>
+      </div>
+      <div class="form-foot">
+        <button class="btn" type="submit" id="cashSave">保存</button>
+        <p id="cashMsg" class="hint">账户里留着、还没投资的钱。余额变了，在首页“现金”表里直接改金额就行。</p>
       </div>
     </form>
   </dialog>
@@ -826,7 +858,7 @@ TAL|好未来|TAL Education
   const EN = Object.fromEntries(LIST.map((x) => [x.c, x.en]));
   const DEFAULT_PICKS = ["QQQM", "VOO", "AAPL", "NVDA", "TSLA", "0700", "9988", "NIO"];
 
-  const state = { history: {}, histReady: false, trades: [], fixed: [], pendingFix: null, fx: 7.8, prices: {}, quotes: {}, updatedAt: "", source: "", ready: false, canWrite: null, pendingDelete: null };
+  const state = { history: {}, histReady: false, trades: [], fixed: [], cash: [], pendingCash: null, pendingFix: null, fx: 7.8, prices: {}, quotes: {}, updatedAt: "", source: "", ready: false, canWrite: null, pendingDelete: null };
   let db = null;
   const $ = (s) => document.querySelector(s);
 
@@ -1001,13 +1033,14 @@ TAL|好未来|TAL Education
   }
 
   // ---------- asset mix (share of total assets) ----------
-  const CLASS_NAME = { stk: "股票", bond: "国债", dep: "定期存款" };
+  const CLASS_NAME = { stk: "股票", bond: "国债", dep: "定期存款", cash: "现金" };
   const SHADES = [1, 0.7, 0.5, 0.36, 0.26];
   function mixItems(c) {
     const d = todayHK(), items = [];
     for (const s of c.syms) if (s.shares > 0 && Number(state.prices[s.symbol]) > 0) items.push({ k: "stk", name: s.symbol, sub: nameOf(s.symbol), v: toUSD(s.mv, s.ccy) });
     for (const f of state.fixed) { const r = fixedAt(f, d); if (r && r.value > 0) items.push({ k: f.kind === "bond" ? "bond" : "dep", name: f.name, sub: f.note || "", v: r.value }); }
-    const order = { stk: 0, bond: 1, dep: 2 };
+    for (const k of state.cash) if (k.amount > 0) items.push({ k: "cash", name: k.name, sub: "", v: toUSD(k.amount, k.currency) });
+    const order = { stk: 0, bond: 1, dep: 2, cash: 3 };
     items.sort((a, b) => order[a.k] - order[b.k] || b.v - a.v);
     const seen = {};
     for (const it of items) { const n = seen[it.k] = (seen[it.k] || 0) + 1; it.op = SHADES[Math.min(n - 1, SHADES.length - 1)]; }
@@ -1027,7 +1060,7 @@ TAL|好未来|TAL Education
     const as = $("#assetStats"), profit = c.unreal + c.realized + fixedNow().income, original = total - profit;
     const stat = (k, v, cls, note) => "<div><dt>" + k + '</dt><dd class="' + (cls || "") + '">' + v + (note ? "<small>" + note + "</small>" : "") + "</dd></div>";
     as.hidden = !(total > 0);
-    as.innerHTML = total > 0 ? stat("现资产", money(total), "", "持仓现在的价值") + stat("原始资产", money(original), "", "投入、还没拿回的本金") +
+    as.innerHTML = total > 0 ? stat("现资产", money(total), "", "持仓现在的价值") + stat("原始资产", money(original), "", "投入的本金（含现金）") +
       stat("盈亏", signed(profit), tone(profit), original > 0 ? pct((profit / original) * 100) : "") : "";
     if (!items.length || !(total > 0)) {
       // An empty grey ring keeps the chart's shape, so the centre label stays in place.
@@ -1164,6 +1197,29 @@ TAL|好未来|TAL Education
     let best = "";
     for (const d of Object.keys(hs)) if (d < date && d > best) best = d;
     return best ? Number(hs[best]) || 0 : 0;
+  }
+
+  function renderCash() {
+    const tb = $("#cash tbody"), ro = !db || state.canWrite === false;
+    const total = state.cash.reduce((t, k) => t + toUSD(k.amount, k.currency), 0);
+    $("#cashSum").textContent = state.cash.length ? "合计 " + money(total) : "";
+    if (!state.cash.length) {
+      tb.innerHTML = '<tr><td colspan="4" class="empty">' + (state.ready ? "还没有记录现金。在“＋ 记一笔”里选“现金”添加。" : "正在读取…") + "</td></tr>";
+      return;
+    }
+    tb.innerHTML = state.cash.map((k) => {
+      const id = esc(k.id), ccy = k.currency === "HKD" ? "港元" : "美元";
+      let acts = "";
+      if (!ro) {
+        acts = state.pendingCash === k.id
+          ? '<button class="mini danger" type="button" data-cact="confirm" data-id="' + id + '">确认删除</button><button class="mini" type="button" data-cact="cancel">取消</button>'
+          : '<button class="mini" type="button" data-cact="del" data-id="' + id + '">删除</button>';
+      }
+      return '<tr><td class="fname">' + esc(k.name) + '<span class="nm">' + ccy + "</span></td>" +
+        '<td class="num"><input class="px cash-amt" type="number" inputmode="decimal" step="any" min="0" data-id="' + id + '" value="' + k.amount +
+        '" aria-label="' + esc(k.name) + " 金额（" + ccy + '）"' + (ro ? " disabled" : "") + ">" + usdCap(k.amount, k.currency) + "</td>" +
+        "<td>" + (k.date ? md(k.date) : "") + '</td><td><div class="acts">' + acts + "</div></td></tr>";
+    }).join("");
   }
 
   function renderHoldings(c) {
@@ -1637,6 +1693,7 @@ TAL|好未来|TAL Education
     renderMonthly(list);
     renderHoldings(c);
     renderFixed();
+    renderCash();
     renderLog(list);
     renderSymList(c);
   }
@@ -1828,7 +1885,7 @@ TAL|好未来|TAL Education
   // Treasuries and deposits: kind switch, save, reference price, delete.
   document.querySelectorAll('input[name="ekind"]').forEach((r) => r.addEventListener("change", () => {
     const kind = document.querySelector('input[name="ekind"]:checked').value, bond = kind === "bond";
-    $("#tradeForm").hidden = kind !== "stk"; $("#fixForm").hidden = kind === "stk";
+    $("#tradeForm").hidden = kind !== "stk"; $("#fixForm").hidden = kind === "stk" || kind === "cash"; $("#cashForm").hidden = kind !== "cash";
     $("#fs-bond").hidden = !bond; $("#fs-dep").hidden = bond;
     $("#x-name").placeholder = bond ? "例如：美国国债 4.25% 2029/6/30" : "例如：美元定期 12 个月";
   }));
@@ -1869,6 +1926,50 @@ TAL|好未来|TAL Education
       $("#fixForm").reset();
     } catch (err) {
       fixMsg(errText(err), "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $("#cash").addEventListener("change", async (e) => {
+    const el = e.target;
+    if (!el.classList || !el.classList.contains("cash-amt") || !db) return;
+    const v = parseFloat(el.value);
+    if (!(v >= 0)) { setStatus("现金金额不能是负数，没有就填 0。", "err"); render(); return; }
+    try {
+      await db.doc("cash/" + el.dataset.id).update({ amount: v, date: todayHK() });
+      setStatus("已更新现金余额。", "ok");
+    } catch (err) { setStatus(errText(err), "err"); render(); }
+  });
+  $("#cash").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-cact]");
+    if (!b) return;
+    const act = b.dataset.cact;
+    if (act === "del") { state.pendingCash = b.dataset.id; render(); return; }
+    if (act === "cancel") { state.pendingCash = null; render(); return; }
+    if (act === "confirm" && db) {
+      b.disabled = true;
+      try {
+        await db.doc("cash/" + b.dataset.id).delete();
+        state.pendingCash = null;
+        setStatus("已删除一条现金记录。", "ok");
+      } catch (err) { setStatus(errText(err), "err"); render(); }
+    }
+  });
+  $("#cashForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const say = (t, k) => { const el = $("#cashMsg"); el.textContent = t; el.dataset.kind = k || ""; };
+    if (!db) { say("还连不上数据库，暂时不能保存。", "err"); return; }
+    const amount = parseFloat($("#c-amt").value), currency = $("#c-ccy").value;
+    if (!(amount >= 0)) { say("请填金额，不能是负数。", "err"); return; }
+    const name = $("#c-name").value.trim().slice(0, 60) || (currency === "HKD" ? "港元现金" : "美元现金");
+    const btn = $("#cashSave");
+    btn.disabled = true;
+    try {
+      await db.collection("cash").add({ name, currency, amount, date: todayHK(), createdAt: new Date().toISOString() });
+      say("已保存：" + name + " " + money(amount, currency) + "。", "ok");
+      $("#cashForm").reset();
+    } catch (err) {
+      say(errText(err), "err");
     } finally {
       btn.disabled = false;
     }
@@ -2139,6 +2240,16 @@ TAL|好未来|TAL Education
     db.collection("history").onSnapshot(applyHistory, () => { state.histReady = true; render(); });
     db.doc("config/main").onSnapshot(applyConfig, () => {});
     db.collection("fixed").onSnapshot(applyFixed, () => {});
+    db.collection("cash").onSnapshot(applyCash, () => {});
+  }
+
+  function applyCash(snap) {
+    state.cash = snap.docs.map((doc) => {
+      const x = doc.data() || {};
+      return { id: doc.id, name: String(x.name || "现金"), currency: x.currency === "HKD" ? "HKD" : "USD", amount: Number(x.amount), date: x.date || "" };
+    }).filter((k) => k.amount >= 0).sort((a, b) => (a.name < b.name ? -1 : 1));
+    if (state.pendingCash && !state.cash.some((k) => k.id === state.pendingCash)) state.pendingCash = null;
+    render();
   }
 
   function applyFixed(snap) {
