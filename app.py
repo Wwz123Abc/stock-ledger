@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -252,6 +253,12 @@ def delete_user(uid):
         con.execute("DELETE FROM read_tokens WHERE uid=?", (uid,))
         con.execute("DELETE FROM users WHERE id=?", (uid,))
         con.execute("DELETE FROM meta WHERE k=?", ("version:%d" % uid,))
+        con.execute("DELETE FROM meta WHERE k='platform_owner' AND v=?", (str(uid),))
+
+
+def platform_owner(uid):
+    """The one account that may open the quant platform at /lab/ (set with `app.py platform-owner NAME`)."""
+    return bool(uid) and get_meta("platform_owner") == str(uid)
 
 
 # ---------------------------------------------------------------- read-only keys
@@ -625,7 +632,8 @@ class Handler(BaseHTTPRequestHandler):
         # ---- signed out: sign in, sign up, reset a forgotten password
         if parts == ["auth"] and method == "GET":
             u = get_user_by_id(uid) if uid else None
-            return self.send_json(200, {"authed": bool(u), "name": u["name"] if u else None, "registration": registration_open()})
+            return self.send_json(200, {"authed": bool(u), "name": u["name"] if u else None, "registration": registration_open(),
+                                        "platform": platform_owner(uid)})
         if parts == ["login"] and method == "POST":
             if locked_out(ip):
                 return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
@@ -688,6 +696,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if not uid:
             return self.send_json(401, {"error": "请先登录。"})
+
+        # ---- nginx's check before every request to the quant platform (auth_request): 200 for its owner only
+        if parts == ["sso"] and method == "GET":
+            if not platform_owner(uid):
+                return self.send_json(403, {"error": "这个账号不能使用量化平台。"})
+            return self.send_json(200, {"ok": True}, {"X-Ledger-User": urllib.parse.quote(get_user_by_id(uid)["name"])})
 
         # ---- signed in: the account itself
         if parts == ["logout"] and method == "POST":
@@ -900,6 +914,26 @@ def main():
         u = account(arg(2, "delete-user NAME"))
         delete_user(u["id"])
         print("deleted " + u["name"])
+    elif cmd == "read-key":
+        # a new read-only key written straight into a program's .env, never shown; replaces the account's old key
+        u, path = account(arg(2, "read-key NAME ENV_FILE")), arg(3, "read-key NAME ENV_FILE")
+        lines = []
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                lines = [ln for ln in f.read().splitlines() if not ln.startswith("LEDGER_TOKEN=")]
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines + ["LEDGER_TOKEN=" + create_read_token(u["id"])]) + "\n")
+        print("wrote a new read-only key for %s into %s (any earlier key of this account no longer works)" % (u["name"], path))
+    elif cmd == "platform-owner":
+        v = arg(2, "platform-owner NAME|off")
+        if v == "off":
+            with write_lock, db() as con:
+                con.execute("DELETE FROM meta WHERE k='platform_owner'")
+            print("quant platform: no owner, /lab/ closed")
+        else:
+            set_meta("platform_owner", str(account(v)["id"]))
+            print("quant platform owner: " + v)
     elif cmd == "registration":
         v = arg(2, "registration on|off")
         if v not in ("on", "off"):

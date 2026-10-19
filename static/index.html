@@ -62,6 +62,7 @@ h2 { margin: 0; font-family: var(--f-display); font-weight: 600; font-size: 20px
 .navrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .navrow .navlink { margin-top: 0; }
 button.navlink { font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.navlink[hidden] { display: none; }
 button.navlink:disabled { opacity: .6; cursor: default; }
 .navlink.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 /* Entry dialog */
@@ -368,6 +369,7 @@ footer p { margin: 0 0 6px; }
       <a class="navlink" href="/dashboard">打开股票看板<span class="nav-x">（K 线、金价）</span>→</a>
       <a class="navlink" href="/reading">读书清单</a>
       <a class="navlink" href="/plan">学习计划</a>
+      <a class="navlink" href="/lab/" id="labLink" hidden>量化平台 →</a>
       <a class="navlink" href="/account">账号</a>
       <button class="navlink" type="button" id="logoutBtn">退出登录</button>
     </div>
@@ -2489,6 +2491,7 @@ TAL|好未来|TAL Education
   $("#logoutBtn").addEventListener("click", async () => {
     try { await window.ledgerApi("POST", "/api/logout"); } finally { location.reload(); }
   });
+  window.ledgerApi("GET", "/api/auth").then((a) => { if (a.platform) $("#labLink").hidden = false; }).catch(() => {});
   init();
 })();
 </script>
