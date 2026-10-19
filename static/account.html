@@ -62,6 +62,22 @@ button:disabled { opacity: .6; cursor: default; }
     <p class="msg" id="exMsg" role="status"></p>
   </section>
 
+  <section aria-labelledby="rt-h">
+    <h2 id="rt-h">只读访问密钥</h2>
+    <p>给你自己的程序（比如 QuantLab 量化工作站）读取持仓用。它只能读取交易、国债定存和现金记录，不能修改或删除任何数据，也不能登录网页。密钥只在创建时显示一次，丢了就重新创建（旧的随即失效）。</p>
+    <p id="rtState">正在读取…</p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <button type="button" id="rtNew">创建密钥</button>
+      <button type="button" id="rtDel" class="danger" hidden>停用密钥</button>
+    </div>
+    <div id="rtShow" hidden style="margin-top: 12px">
+      <p>新密钥（请现在复制，关闭页面后无法再看到）：</p>
+      <input id="rtValue" type="text" readonly style="width: 100%; font-family: ui-monospace, monospace" aria-label="只读访问密钥">
+      <button type="button" id="rtCopy" style="margin-top: 8px">复制</button>
+    </div>
+    <p class="msg" id="rtMsg" role="status"></p>
+  </section>
+
   <section aria-labelledby="del-h">
     <h2 id="del-h">注销账号</h2>
     <p>注销后，你的账号和全部记录会立即删除，无法恢复。建议先导出数据。</p>
@@ -118,6 +134,35 @@ button:disabled { opacity: .6; cursor: default; }
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       say(msg, "已导出 " + n + " 条记录。", "ok");
     } catch (err) { say(msg, err.message, "err"); }
+  });
+
+  const when = (v) => v ? new Date(typeof v === "number" ? v * 1000 : v).toLocaleString("zh-CN") : "从未";
+  function showToken(info) {
+    $("#rtState").textContent = info.exists ? "已有密钥：创建于 " + when(info.created) + "，最近使用 " + when(info.last_used) + "。" : "还没有密钥。";
+    $("#rtNew").textContent = info.exists ? "重新创建（旧密钥失效）" : "创建密钥";
+    $("#rtDel").hidden = !info.exists;
+  }
+  api("GET", "/api/readtoken").then(showToken).catch(() => { $("#rtState").textContent = "读取失败，刷新页面试试。"; });
+  $("#rtNew").addEventListener("click", async () => {
+    try {
+      const r = await api("POST", "/api/readtoken");
+      showToken(r);
+      $("#rtValue").value = r.token;
+      $("#rtShow").hidden = false;
+      say($("#rtMsg"), "已创建。把它填进 QuantLab 的 .env：LEDGER_TOKEN=这串密钥", "ok");
+    } catch (err) { say($("#rtMsg"), err.message, "err"); }
+  });
+  $("#rtCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("#rtValue").value); say($("#rtMsg"), "已复制。", "ok"); }
+    catch { $("#rtValue").select(); say($("#rtMsg"), "请手动复制（已选中）。", ""); }
+  });
+  $("#rtDel").addEventListener("click", async () => {
+    try {
+      showToken(await api("DELETE", "/api/readtoken"));
+      $("#rtShow").hidden = true;
+      $("#rtValue").value = "";
+      say($("#rtMsg"), "密钥已停用，用它的程序将无法再读取。", "ok");
+    } catch (err) { say($("#rtMsg"), err.message, "err"); }
   });
 
   $("#delForm").addEventListener("submit", async (e) => {

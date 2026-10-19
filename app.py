@@ -62,6 +62,8 @@ refresh_lock = threading.Lock()
 fails = {}         # ip -> [count, first_time]: wrong passwords and reset codes
 signups = {}       # ip -> [count, first_time]
 last_refresh = {}  # uid -> time
+holdings_calls = {}  # uid -> [count, first_time]: reads with a read-only key
+key_fails = {}       # ip -> [count, first_time]: wrong read-only keys, kept apart so they never block a sign-in
 VISION = {  # screenshot readers with an OpenAI-compatible API: name -> (base URL, model, name shown to users)
     "deepseek": ("https://api.deepseek.com", "deepseek-flash", "DeepSeek"),
     "dashscope": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-vl-max", "阿里云百炼（通义千问）"),
@@ -107,6 +109,8 @@ def init_db():
         if old and "uid" not in old:
             con.execute("DROP TABLE sessions")
         con.execute("CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, uid INTEGER NOT NULL, expires REAL NOT NULL)")
+        con.execute("CREATE TABLE IF NOT EXISTS read_tokens (uid INTEGER PRIMARY KEY, hash TEXT NOT NULL UNIQUE, created TEXT NOT NULL, "
+                    "last_used REAL)")
 
 
 def migrate_single_user(con):
@@ -245,8 +249,46 @@ def delete_user(uid):
     with write_lock, db() as con:
         con.execute("DELETE FROM docs WHERE uid=?", (uid,))
         con.execute("DELETE FROM sessions WHERE uid=?", (uid,))
+        con.execute("DELETE FROM read_tokens WHERE uid=?", (uid,))
         con.execute("DELETE FROM users WHERE id=?", (uid,))
         con.execute("DELETE FROM meta WHERE k=?", ("version:%d" % uid,))
+
+
+# ---------------------------------------------------------------- read-only keys
+# One per account, for the owner's own programs: it reads trades, Treasuries and deposits, and cash through
+# GET /api/holdings and nothing else. Only its SHA-256 is stored; the key itself is shown once, when created.
+
+def read_token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_read_token(uid):
+    token = "lrt_" + secrets.token_urlsafe(32)
+    with write_lock, db() as con:
+        con.execute("INSERT OR REPLACE INTO read_tokens(uid, hash, created, last_used) VALUES(?,?,?,NULL)",
+                    (uid, read_token_hash(token), now_iso()))
+    return token
+
+
+def read_token_info(uid):
+    with db() as con:
+        r = con.execute("SELECT created, last_used FROM read_tokens WHERE uid=?", (uid,)).fetchone()
+    return {"exists": bool(r), "created": r[0] if r else None, "last_used": r[1] if r else None}
+
+
+def revoke_read_token(uid):
+    with write_lock, db() as con:
+        con.execute("DELETE FROM read_tokens WHERE uid=?", (uid,))
+
+
+def read_token_uid(token):
+    if not token.startswith("lrt_") or len(token) > 100:
+        return None
+    with write_lock, db() as con:
+        r = con.execute("SELECT uid FROM read_tokens WHERE hash=?", (read_token_hash(token),)).fetchone()
+        if r:
+            con.execute("UPDATE read_tokens SET last_used=? WHERE uid=?", (time.time(), r[0]))
+    return r[0] if r else None
 
 
 def new_session(uid):
@@ -629,6 +671,21 @@ class Handler(BaseHTTPRequestHandler):
             set_password(u["id"], hash_pw(pw))
             return self.signed_in(u["id"])
 
+        # ---- read-only key: the holdings of one account, for its owner's programs
+        if parts == ["holdings"] and method == "GET":
+            if too_many(key_fails, ip, 5, 900):
+                return self.send_json(429, {"error": "错误次数太多，15 分钟后再试。"})
+            auth = self.headers.get("Authorization", "")
+            ruid = read_token_uid(auth[7:].strip()) if auth[:7].lower() == "bearer " else None
+            if not ruid:
+                note(key_fails, ip)
+                return self.send_json(401, {"error": "只读访问密钥无效或已停用。"})
+            if too_many(holdings_calls, ruid, 120, 3600):
+                return self.send_json(429, {"error": "读取太频繁，一小时最多 120 次。"})
+            note(holdings_calls, ruid)
+            body = {c: [{"id": d["id"], **d["data"]} for d in list_docs(ruid, c)] for c in ("trades", "fixed", "cash")}
+            return self.send_json(200, {"account": get_user_by_id(ruid)["name"], "generated": now_iso(), **body})
+
         if not uid:
             return self.send_json(401, {"error": "请先登录。"})
 
@@ -648,6 +705,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "新密码要 8–128 位。"})
             set_password(uid, hash_pw(pw))
             return self.signed_in(uid)
+        if parts == ["readtoken"]:
+            if method == "GET":
+                return self.send_json(200, read_token_info(uid))
+            if method == "POST":
+                return self.send_json(200, {"token": create_read_token(uid), **read_token_info(uid)})
+            if method == "DELETE":
+                revoke_read_token(uid)
+                return self.send_json(200, read_token_info(uid))
         if parts == ["export"] and method == "GET":
             return self.send_json(200, {c: {d["id"]: d["data"] for d in list_docs(uid, c)} for c in sorted(USER_COLLS)})
         if parts == ["account", "delete"] and method == "POST":
